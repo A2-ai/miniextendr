@@ -257,6 +257,8 @@ pub enum Family {
     },
     #[condition(message = "plain")]
     Plain,
+    #[condition(call = miniextendr_api::RCallValue::new(name), message = "given {name}")]
+    Given { name: ::std::string::String },
 }
 
 #[miniextendr]
@@ -285,6 +287,16 @@ pub fn condition_macros(x: i32) -> i32 {
         4 => miniextendr_api::error!(class = "shadow_zero", "zero"),
         5 => miniextendr_api::rust_error!("one"),
         6 => miniextendr_api::rust_condition!(class = "shadow_two", "two"),
+        7 => miniextendr_api::warning!(
+            call = miniextendr_api::RCallValue::new("site").arg(x),
+            class = "shadow_given",
+            "given {x}"
+        ),
+        8 => miniextendr_api::arg_error!(
+            call = miniextendr_api::RCallValue::new("site"),
+            param = "x",
+            "'x' is {x}"
+        ),
         _ => x,
     }
 }

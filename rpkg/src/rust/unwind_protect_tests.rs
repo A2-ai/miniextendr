@@ -91,8 +91,9 @@ pub extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
 
 /// Raise the condition `what` names: `"error"` (`error!` with a class and a
 /// data field), `"arg"` (`arg_error!`), `"panic"`, `"warning"` (`warning!`),
-/// or `"reserved"`, a hand-built payload whose data fields are named `kind`
-/// and `message`. The macros reject those names, but a payload built by hand
+/// `"warning_none"` (`warning!(call = none, ..)`), `"warning_given"`
+/// (`warning!` with the given call `site(1L)`), or `"reserved"`, a
+/// hand-built payload whose data fields are named `kind` and `message`. The macros reject those names, but a payload built by hand
 /// reaches the transports with them, and both must splice them the same way
 /// (#1315).
 fn raise_transport_condition(what: &str) -> i32 {
@@ -105,6 +106,11 @@ fn raise_transport_condition(what: &str) -> i32 {
         "arg" => miniextendr_api::arg_error!(param = "what", "'what' is not a choice"),
         "panic" => panic!("transport panic"),
         "warning" => miniextendr_api::warning!("transport warning"),
+        "warning_none" => miniextendr_api::warning!(call = none, "transport warning"),
+        "warning_given" => miniextendr_api::warning!(
+            call = miniextendr_api::RCallValue::new("site").arg(1),
+            "transport warning"
+        ),
         "reserved" => std::panic::panic_any(miniextendr_api::RCondition::Error {
             message: "base message".to_string(),
             class: vec!["pkg_transport".to_string()],
@@ -124,8 +130,10 @@ fn raise_transport_condition(what: &str) -> i32 {
 /// `with_r_unwind_protect_or_raise`, the raising guard ALTREP `RUnwind`
 /// callbacks use, given the wrapper's call. Both give one condition (#1768).
 /// @param what Which condition: `"error"` (a classed error with a data field),
-///   `"arg"` (an argument error), `"panic"`, `"warning"`, or `"reserved"` (data
-///   fields named `kind` and `message`); anything else returns `0L`.
+///   `"arg"` (an argument error), `"panic"`, `"warning"`, `"warning_none"` (a
+///   warning without a call), `"warning_given"` (a warning with the call
+///   `site(1L)`), or `"reserved"` (data fields named `kind` and `message`);
+///   anything else returns `0L`.
 /// @param guard Whether to raise through the raising guard.
 /// @return `0L` when `what` names no condition.
 /// @export

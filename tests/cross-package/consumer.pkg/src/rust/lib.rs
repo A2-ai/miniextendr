@@ -137,6 +137,18 @@ impl Counter for DoubleCounter {
         miniextendr_api::warning!(call = none, class = "data_warning", "{}", msg);
     }
 
+    fn raise_warning_with_call(&self, msg: String) {
+        use miniextendr_api::{RCallPart, RCallValue};
+        let call = RCallValue::new("<-")
+            .arg(
+                RCallValue::new("$")
+                    .arg(RCallPart::symbol("x"))
+                    .arg(RCallPart::symbol("table")),
+            )
+            .arg(RCallPart::symbol("value"));
+        miniextendr_api::warning!(call = call, class = "table_warning", "{}", msg);
+    }
+
     fn raise_message(&self, msg: String) {
         miniextendr_api::message!("{}", msg);
     }
@@ -468,6 +480,22 @@ pub fn counter_raise_warning(counter_sexp: SEXP, msg: String) {
 pub fn counter_raise_warning_without_call(counter_sexp: SEXP, msg: String) {
     let counter = unsafe { CounterView::from_sexp(counter_sexp) };
     counter.raise_warning_without_call(msg);
+}
+
+/// Raise a warning!() with a given call through a Counter trait method via
+/// trait dispatch.
+///
+/// Verifies that the producer's `warning!(call = <expr>, ...)` keeps its call
+/// across the trait-ABI boundary: the call in the tagged value's call slot is
+/// read back as the given call and survives the re-panic, so the consumer's
+/// wrapper reports it, not its own call (#1852).
+/// @param counter_sexp An ExternalPtr to any type implementing Counter
+/// @param msg The warning message
+/// @export
+#[miniextendr]
+pub fn counter_raise_warning_with_call(counter_sexp: SEXP, msg: String) {
+    let counter = unsafe { CounterView::from_sexp(counter_sexp) };
+    counter.raise_warning_with_call(msg);
 }
 
 /// Raise an arg_error!() through a Counter trait method via trait dispatch.

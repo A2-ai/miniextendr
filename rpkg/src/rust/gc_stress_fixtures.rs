@@ -4544,9 +4544,10 @@ pub fn gc_stress_serde_ser() {
 /// the eight base types (scalar + vector × i32/f64/bool/String) plus the #995
 /// richer forms (NA-aware `Option`/`Vec<Option>`, the wide-integer ladder, a
 /// `Debug`-stringified value, and a nested named list). It reads every field
-/// back to verify integrity. Odd rounds build a call-less condition, whose
-/// `call` slot is a fresh `FALSE` marker allocated between the class vector
-/// and the data list (#1725).
+/// back to verify integrity. Every third round builds a call-less condition,
+/// whose `call` slot is a fresh `FALSE` marker allocated between the class
+/// vector and the data list (#1725), and every third a condition with a given
+/// call, built there part by part (#1852).
 ///
 /// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
 #[miniextendr(noexport)]
@@ -4555,7 +4556,7 @@ pub fn gc_stress_condition_data() {
     use miniextendr_api::condition::{ConditionCall, ConditionData};
     use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
-    for round in 0..4 {
+    for round in 0..6 {
         let data: ConditionData = vec![
             ("int".to_string(), RValue::from(round)),
             ("real".to_string(), RValue::from(1.5_f64)),
@@ -4588,10 +4589,22 @@ pub fn gc_stress_condition_data() {
             ),
         ];
 
-        let call_choice = if round % 2 == 1 {
-            ConditionCall::None
-        } else {
-            ConditionCall::Inherit
+        let call_choice = match round % 3 {
+            0 => ConditionCall::Inherit,
+            1 => ConditionCall::None,
+            _ => ConditionCall::from(
+                miniextendr_api::RCallValue::new("<-")
+                    .arg(
+                        miniextendr_api::RCallValue::new("$")
+                            .arg(miniextendr_api::RCallPart::symbol("x"))
+                            .arg(miniextendr_api::RCallPart::symbol("table")),
+                    )
+                    .arg(
+                        miniextendr_api::RCallValue::new("c")
+                            .arg(round)
+                            .named_arg("n", "two"),
+                    ),
+            ),
         };
         // SAFETY: gc_stress fixtures run on the R main thread under gctorture.
         let tagged = unsafe {
@@ -4601,7 +4614,7 @@ pub fn gc_stress_condition_data() {
                 &["gc_stress_class".to_string()],
                 None,
                 Some(data),
-                call_choice,
+                call_choice.clone(),
             )
         };
         // The returned SEXP is unprotected — root it before the readback
@@ -4617,6 +4630,14 @@ pub fn gc_stress_condition_data() {
                 assert_eq!(call_slot.logical_elt(0), 0, "no-call marker must be FALSE");
             }
             ConditionCall::Inherit => assert!(call_slot.is_nil(), "no call given: NULL"),
+            ConditionCall::Given(_) => {
+                use miniextendr_api::PairListExt;
+                assert!(call_slot.is_language(), "a given call is a call");
+                let value = call_slot.cdr().cdr().car();
+                assert!(value.is_language(), "its nested call survives");
+                assert_eq!(value.cdr().car().integer_elt(0), round);
+                assert_eq!(value.cdr().cdr().car().string_elt_str(0), Some("two"));
+            }
         }
         let data_list = tagged.vector_elt(4);
         assert_eq!(data_list.len(), 13, "data list must carry all 13 fields");
@@ -4674,6 +4695,49 @@ pub fn gc_stress_condition_data() {
         assert_eq!(names.string_elt_str(0), Some("int"));
         assert_eq!(names.string_elt_str(7), Some("labels"));
         assert_eq!(names.string_elt_str(12), Some("nested"));
+    }
+}
+
+/// Build an `RCallValue` into a call and read it back under GC pressure
+/// (#1852): `RCallValue::into_sexp` allocates every part (symbols, constants,
+/// nested calls, the pairlist cells) and roots each before the next one.
+/// The call is `pkg::f(x[1, ], n = 2L, label = c("a", NA), g(TRUE, 1.5))`;
+/// it is read back with `TryFromSexp` and built again, and both builds must
+/// be `identical()`.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_given_call() {
+    use miniextendr_api::{OwnedProtect, RCallPart, RCallValue, TryFromSexp};
+
+    let built = RCallValue::with_function(
+        RCallValue::new("::")
+            .arg(RCallPart::symbol("pkg"))
+            .arg(RCallPart::symbol("f"))
+            .into(),
+    )
+    .arg(
+        RCallValue::new("[")
+            .arg(RCallPart::symbol("x"))
+            .arg(1.0)
+            .arg(RCallPart::symbol("")),
+    )
+    .named_arg("n", 2)
+    .named_arg("label", vec![Some("a"), None])
+    .arg(RCallValue::new("g").arg(true).arg(1.5));
+    // SAFETY: gc_stress fixtures run on the R main thread under gctorture.
+    unsafe {
+        let first = OwnedProtect::new(built.into_sexp());
+        let read = RCallValue::try_from_sexp(first.get()).expect("the built call reads back");
+        let second = OwnedProtect::new(read.into_sexp());
+        assert!(
+            bool::from(miniextendr_api::sys::R_compute_identical(
+                first.get(),
+                second.get(),
+                16
+            )),
+            "a call read back builds the same call"
+        );
     }
 }
 

@@ -178,18 +178,96 @@ fn call_none_on_the_type_or_a_variant() {
 }
 
 #[test]
+fn given_call_on_the_type_or_a_variant() {
+    let given = "< :: miniextendr_api :: condition :: ConditionCall as :: core :: convert :: From < _ >> :: from";
+
+    // On a struct: the fields are in scope, as for `message`.
+    let code = derive(syn::parse_quote! {
+        #[condition(call = assignment(field), message = "bad {field}")]
+        struct BadField { field: String }
+    });
+    assert!(code.contains("let Self { field } = self ;"), "{code}");
+    assert!(
+        code.contains(&format!("{given} (assignment (field))")),
+        "{code}"
+    );
+
+    // On a variant, beside one without a call and one without a `call`: the
+    // variant's fields are in scope and the rest keep the captured call.
+    let code = derive(syn::parse_quote! {
+        enum E {
+            #[condition(call = assignment(name))]
+            Replaced { name: String },
+            #[condition(call = none)]
+            Quiet,
+            Plain { n: i32 },
+        }
+    });
+    assert!(
+        code.contains(&format!(
+            "Self :: Replaced {{ name }} => {given} (assignment (name)) ,"
+        )),
+        "{code}"
+    );
+    assert!(
+        code.contains(
+            "Self :: Quiet => :: miniextendr_api :: condition :: ConditionCall :: None ,"
+        ),
+        "{code}"
+    );
+    assert!(
+        code.contains("_ => :: miniextendr_api :: condition :: ConditionCall :: Inherit"),
+        "{code}"
+    );
+    let call_fn = &code[code.find("fn call (& self)").expect("a call method")..];
+    assert!(!call_fn.contains("Self :: Plain"), "{call_fn}");
+
+    // On the type: every variant, unless a variant gives its own.
+    let code = derive(syn::parse_quote! {
+        #[condition(call = site())]
+        enum E {
+            A,
+            #[condition(call = none)]
+            B,
+        }
+    });
+    assert!(
+        code.contains(&format!("Self :: A => {given} (site ()) ,")),
+        "{code}"
+    );
+    assert!(
+        code.contains("Self :: B => :: miniextendr_api :: condition :: ConditionCall :: None ,"),
+        "{code}"
+    );
+}
+
+#[test]
 fn rejects_bad_call_values() {
     let err = derive_err(syn::parse_quote! {
         #[condition(call = wrapper)]
         struct S;
     });
-    assert!(err.contains("unknown `call` value `wrapper`"), "{err}");
+    assert!(
+        err.contains("`call = wrapper` is a `#[miniextendr(call = ...)]` setting"),
+        "{err}"
+    );
+    let err = derive_err(syn::parse_quote! {
+        enum E {
+            #[condition(call = caller)]
+            A,
+        }
+    });
+    assert!(
+        err.contains("`call = caller` is a `#[miniextendr(call = ...)]` setting"),
+        "{err}"
+    );
 
     let err = derive_err(syn::parse_quote! {
         #[condition(call = "none")]
         struct S;
     });
     assert!(err.contains("`call` takes `none`"), "{err}");
+    assert!(err.contains("not a literal"), "{err}");
 
     let err = derive_err(syn::parse_quote! {
         enum E {

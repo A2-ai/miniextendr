@@ -162,7 +162,10 @@ fn assert_entry_point_condition(condition: &RCondition, parts: &ErrParts) {
         format!("{:?}", condition.data()),
         format!("{:?}", parts.data)
     );
-    assert_eq!(condition.call(), parts.call);
+    assert_eq!(
+        format!("{:?}", condition.call()),
+        format!("{:?}", parts.call)
+    );
 }
 
 #[test]

@@ -682,6 +682,35 @@ variants, and is the representation used by structured condition `data =`
 payloads. It deliberately does not model closures, environments, language
 objects, S4 objects, external pointers, or ALTREP internals.
 
+### Calls as values (`RCallValue`)
+
+`RCallValue` is the same for a call: an owned, `Send` function and its
+arguments, each a symbol, another call or an `RValue` constant. It is how a
+condition names its call
+([CONDITIONS.md](CONDITIONS.md#conditions-with-a-given-call)), and it converts
+both ways:
+
+```rust
+use miniextendr_api::{RCallPart, RCallValue};
+
+// pkg::f(x[1, ], n = 2L, "s")
+let call = RCallValue::with_function(
+    RCallValue::new("::").arg(RCallPart::symbol("pkg")).arg(RCallPart::symbol("f")).into(),
+)
+.arg(RCallValue::new("[").arg(RCallPart::symbol("x")).arg(1.0).arg(RCallPart::symbol("")))
+.named_arg("n", 2)
+.arg("s");
+```
+
+- **From R** it reads a call (`is.call()`); its parts must be symbols, calls
+  or values `RValue` reads. A symbol, a function object inside the call (as
+  `do.call()` builds one) or an environment is refused.
+- **To R** it builds the call. A symbol or argument name over R's 10000 bytes
+  is an error (`RCallValue::unbuildable()` says which), checked before R is
+  asked to build it.
+- `.arg("x")` adds the string `"x"`, as R's `call("f", "x")` does; a name is
+  `RCallPart::symbol("x")`, and the empty symbol is the empty argument.
+
 ### Matrices
 
 With the `ndarray` feature:

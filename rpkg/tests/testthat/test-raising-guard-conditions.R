@@ -64,6 +64,15 @@ test_that("warning! inside the guard degrades to a kind = 'panic' error", {
   expect_identical(e$kind, "panic")
   expect_match(conditionMessage(e), "cannot be raised as non-fatal signals", fixed = TRUE)
   expect_equal(conditionCall(e), quote(transport_condition("warning", TRUE)))
+
+  # The warning's call choice carries over to the error: none, or its own
+  # call (#1852).
+  e <- tryCatch(transport_condition("warning_none", TRUE), error = function(e) e)
+  expect_identical(e$kind, "panic")
+  expect_null(conditionCall(e))
+  e <- tryCatch(transport_condition("warning_given", TRUE), error = function(e) e)
+  expect_identical(e$kind, "panic")
+  expect_identical(conditionCall(e), quote(site(1L)))
 })
 
 test_that("no condition: the guard returns the value", {

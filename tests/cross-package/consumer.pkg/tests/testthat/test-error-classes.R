@@ -194,6 +194,25 @@ test_that("trait warning!(call = none): no call across the trait-ABI boundary", 
   expect_true(grepl("counter_raise_warning", deparse(conditionCall(w))[[1]]))
 })
 
+# warning!(call = <expr>, ...) (#1852)
+test_that("trait warning!(call = <expr>): the given call crosses the trait-ABI boundary", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  for (counter in list(new_counter(5L), new_double_counter(1L))) {
+    w <- tryCatch(
+      counter_raise_warning_with_call(counter, "table warn"),
+      table_warning = function(w) w
+    )
+    expect_equal(
+      class(w),
+      c("table_warning", "rust_warning", "simpleWarning", "warning", "condition")
+    )
+    expect_equal(conditionMessage(w), "table warn")
+    expect_identical(conditionCall(w), quote(x$table <- value))
+  }
+})
+
 # message!()
 test_that("trait message!(): rust_message + e$kind", {
   skip_if_not_installed("producer.pkg")

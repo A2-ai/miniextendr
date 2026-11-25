@@ -171,25 +171,32 @@ pub type ConditionData = Vec<(String, crate::RValue)>;
 
 // region: ConditionCall — whether a condition reports a call
 
-/// Whether a condition reports a call (`conditionCall()`): the per-condition
-/// equivalent of R's `warning(..., call. = FALSE)` / `stop(..., call. = FALSE)`.
+/// Which call a condition reports (`conditionCall()`): R's
+/// `warning(..., call. = FALSE)` / `stop(..., call. = FALSE)` per condition,
+/// or a call the function builds.
 ///
 /// Every condition a `#[miniextendr]` function raises carries the call its
 /// transport captured: the wrapper's call as written (or the caller's, under
 /// `call = caller`), `NULL` in ALTREP and connection callbacks. A condition
 /// about the data rather than the call opts out with [`ConditionCall::None`];
-/// its siblings from the same function keep their call.
+/// one that should read like the code the user wrote, such as
+/// `x$table <- value` from a replacement method, names it with
+/// [`ConditionCall::Given`]. Its siblings from the same function keep their
+/// call.
 ///
-/// Spellings: `call = none` first in [`crate::warning!`], [`crate::error!`],
-/// [`crate::condition!`] and the `defer_*!` macros;
-/// [`RError::without_call`]; `#[condition(call = none)]` on a
-/// `#[derive(RCondition)]` type or variant; or an
-/// [`RConditionData::call`] impl.
+/// Spellings, first in [`crate::warning!`], [`crate::error!`],
+/// [`crate::condition!`], [`crate::arg_error!`] and the `defer_*!` macros:
+/// `call = none`, or `call = <expr>` for an [`RCallValue`](crate::RCallValue)
+/// (or a `ConditionCall`). Also [`RError::without_call`] /
+/// [`RError::with_call`]; `#[condition(call = none)]` or
+/// `#[condition(call = <expr>)]` on a `#[derive(RCondition)]` type or
+/// variant; or an [`RConditionData::call`] impl.
 ///
 /// On the tagged condition value the choice is the `call` slot itself:
-/// `FALSE` for [`ConditionCall::None`], read back by the R helper (and by the
-/// trait-ABI re-panic, [`RCondition::from_tagged_sexp`]) as "no call".
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+/// `FALSE` for [`ConditionCall::None`], the call for
+/// [`ConditionCall::Given`], read back by the R helper (and by the trait-ABI
+/// re-panic, [`RCondition::from_tagged_sexp`]).
+#[derive(Debug, Clone, Default)]
 pub enum ConditionCall {
     /// The call the transport captured (the default).
     #[default]
@@ -197,17 +204,20 @@ pub enum ConditionCall {
     /// No call: `conditionCall()` is `NULL` and the printed condition has no
     /// `In f(...) :` prefix.
     None,
+    /// This call, built on R's main thread when the condition is raised. A
+    /// call R can't build (a name R refuses, see
+    /// [`RCallValue::unbuildable`](crate::RCallValue::unbuildable)) falls back
+    /// to [`Inherit`](Self::Inherit), so the condition is still raised. A
+    /// condition carried inside another (its `e$parent`, an entry of
+    /// `e$errors`) reports the call the transport captured instead, as for
+    /// `Inherit` (#2414). Boxed, so a choice stays small inside every error
+    /// type that carries one.
+    Given(Box<crate::RCallValue>),
 }
 
-impl ConditionCall {
-    /// `call` when the condition keeps its call, `None` otherwise: the call to
-    /// hand a transport that takes the R call object directly.
-    #[inline]
-    pub fn apply(self, call: Option<crate::SEXP>) -> Option<crate::SEXP> {
-        match self {
-            ConditionCall::Inherit => call,
-            ConditionCall::None => Option::None,
-        }
+impl From<crate::RCallValue> for ConditionCall {
+    fn from(call: crate::RCallValue) -> Self {
+        ConditionCall::Given(Box::new(call))
     }
 }
 
@@ -424,8 +434,10 @@ impl RCondition {
     /// the cause's class does not catch this condition; code that wants the
     /// cause branches on it: `inherits(e$parent, "pkg_error_config")`.
     ///
-    /// The cause reports the same call as this condition, or none when it was
-    /// raised with `call = none`. A second `with_parent` replaces the first,
+    /// The cause reports the call the transport captured, which is this
+    /// condition's unless this one was given a call, or none when it was
+    /// raised with `call = none`; a call given to the cause itself
+    /// ([`ConditionCall::Given`]) is not kept (#2414). A second `with_parent` replaces the first,
     /// and the cause replaces a `data` field this condition names `parent`.
     ///
     /// ```ignore
@@ -472,7 +484,7 @@ impl RCondition {
             | RCondition::Warning { call, .. }
             | RCondition::Message { call, .. }
             | RCondition::Condition { call, .. }
-            | RCondition::Conversion { call, .. } => *call,
+            | RCondition::Conversion { call, .. } => call.clone(),
         }
     }
 
@@ -622,8 +634,9 @@ pub(crate) fn tagged_rvalue(kind: &str, parts: ErrParts) -> crate::RValue {
     } else {
         RValue::Character(parts.class.into_iter().map(Some).collect())
     };
+    // `RValue` holds no call, so a given call is the captured one here (#2414).
     let call = match parts.call {
-        ConditionCall::Inherit => RValue::Null,
+        ConditionCall::Inherit | ConditionCall::Given(_) => RValue::Null,
         ConditionCall::None => RValue::Logical(vec![Some(false)]),
     };
     let data = parts.data.map_or(RValue::Null, |fields| {
@@ -744,10 +757,13 @@ macro_rules! __mx_condition_data {
 /// Not part of the public API.
 ///
 /// Accepted orders (every part optional except the message):
-/// `call = none`, then `class = ..`, then `data = ..`, then the `format!`
-/// arguments. `class` takes anything implementing
-/// [`crate::condition::ConditionClass`] (one string or several). A `call`
-/// other than `none`, or one after `class` / `data`, is a compile error: a
+/// `call = none` or `call = <expr>`, then `class = ..`, then `data = ..`,
+/// then the `format!` arguments. `<expr>` is a
+/// [`RCallValue`](crate::RCallValue) or a
+/// [`ConditionCall`](crate::condition::ConditionCall). `class` takes anything
+/// implementing [`crate::condition::ConditionClass`] (one string or several).
+/// `call = wrapper` / `call = caller` (the `#[miniextendr(call = ...)]`
+/// settings), or a `call` after `class` / `data`, is a compile error: a
 /// `format!` string must start with a literal, so `call` as the first token is
 /// never a message.
 ///
@@ -769,6 +785,14 @@ macro_rules! __mx_condition_data {
 /// # use miniextendr_api as mx;
 /// # fn f() {
 /// mx::warning!(call = none, class = "pkg_warning", data = { n = 1 }, "plain");
+/// # }
+/// ```
+///
+/// ```
+/// # use miniextendr_api as mx;
+/// # fn f() {
+/// let call = mx::RCallValue::new("f").arg(mx::RCallPart::symbol("x"));
+/// mx::warning!(call = call, class = "pkg_warning", "given");
 /// # }
 /// ```
 #[doc(hidden)]
@@ -813,32 +837,49 @@ macro_rules! __mx_condition_parts {
         )
     };
     (@options call $($rest:tt)*) => {
-        ::core::compile_error!("condition macros: `call = none` is given twice")
+        ::core::compile_error!("condition macros: `call = ...` is given twice")
     };
     (@misplaced_call) => {
         ::core::compile_error!(
-            "condition macros: `call = none` comes first, before `class = ...` and `data = ...`: \
+            "condition macros: `call = ...` comes first, before `class = ...` and `data = ...`: \
              `warning!(call = none, class = \"...\", \"...\")`"
         )
     };
-    // Entry: the optional `call = none`, then the option grid.
-    (call = none, $($rest:tt)+) => {{
-        let (__mx_class, __mx_data, __mx_message) =
-            $crate::__mx_condition_parts!(@options $($rest)+);
-        (
-            $crate::condition::ConditionCall::None,
-            __mx_class,
-            __mx_data,
-            __mx_message,
-        )
-    }};
-    (call $($rest:tt)*) => {
-        ::core::compile_error!(
-            "condition macros: the only call option is `call = none` (no call, like R's \
-             `call. = FALSE`), and it comes first, followed by a comma: \
-             `warning!(call = none, \"...\")`"
+    // Entry: the optional `call = none` / `call = <expr>`, then the option
+    // grid. `none` is also an expression, so its arm comes first.
+    (call = none, $($rest:tt)+) => {
+        $crate::__mx_condition_parts!(@call $crate::condition::ConditionCall::None; $($rest)+)
+    };
+    (call = wrapper $($rest:tt)*) => {
+        $crate::__mx_condition_parts!(@wrapper_or_caller)
+    };
+    (call = caller $($rest:tt)*) => {
+        $crate::__mx_condition_parts!(@wrapper_or_caller)
+    };
+    (call = $call:expr, $($rest:tt)+) => {
+        $crate::__mx_condition_parts!(
+            @call <$crate::condition::ConditionCall as ::core::convert::From<_>>::from($call);
+            $($rest)+
         )
     };
+    (call $($rest:tt)*) => {
+        ::core::compile_error!(
+            "condition macros: the call option is `call = none` (no call, like R's \
+             `call. = FALSE`) or `call = <expr>` (an `RCallValue`), and it comes first, \
+             followed by a comma: `warning!(call = none, \"...\")`"
+        )
+    };
+    (@wrapper_or_caller) => {
+        ::core::compile_error!(
+            "condition macros: `wrapper` and `caller` are `#[miniextendr(call = ...)]` settings; \
+             a condition's `call` is `none` or an expression giving the call (an `RCallValue`)"
+        )
+    };
+    (@call $call:expr; $($rest:tt)+) => {{
+        let (__mx_class, __mx_data, __mx_message) =
+            $crate::__mx_condition_parts!(@options $($rest)+);
+        ($call, __mx_class, __mx_data, __mx_message)
+    }};
     ($($rest:tt)*) => {{
         let (__mx_class, __mx_data, __mx_message) =
             $crate::__mx_condition_parts!(@options $($rest)*);
@@ -897,8 +938,9 @@ macro_rules! __mx_condition_parts {
 /// # [1] 150   0 100
 /// ```
 ///
-/// Argument order is fixed: `call = none` (optional), then `class = ...`
-/// (optional), then `data = ...` (optional), then the format message.
+/// Argument order is fixed: `call = none` or `call = <expr>` (optional), then
+/// `class = ...` (optional), then `data = ...` (optional), then the format
+/// message.
 ///
 /// Field names `message`, `call` and `kind` are the condition's own slots and
 /// are rejected (at compile time for literal / bare-identifier names, at
@@ -930,6 +972,27 @@ macro_rules! __mx_condition_parts {
 /// The same marker exists as [`RError::without_call`] for `Result` errors and
 /// as `#[condition(call = none)]` on a `#[derive(RCondition)]` type or
 /// variant; see [`ConditionCall`].
+///
+/// # Conditions with a given call
+///
+/// A leading `call = <expr>` raises the condition with that call, an
+/// [`RCallValue`](crate::RCallValue) the function builds, so that it reads
+/// like the code the user wrote. A replacement method reports the
+/// assignment:
+///
+/// ```ignore
+/// use mx::{RCallPart, RCallValue};
+/// let call = RCallValue::new("<-")
+///     .arg(RCallValue::new("$").arg(RCallPart::symbol("x")).arg(RCallPart::symbol("table")))
+///     .arg(RCallPart::symbol("value"));
+/// mx::error!(call = call, class = "pkg_bad_table", "the table has no `id` column");
+/// // Error in x$table <- value : the table has no `id` column
+/// ```
+///
+/// The call is built on R's main thread when the condition is raised; the
+/// value itself is `Send`, like `data`. [`RError::with_call`] and
+/// `#[condition(call = <expr>)]` are the same for `Result` errors and derived
+/// types; see [`ConditionCall::Given`].
 ///
 /// # See also
 ///
@@ -1032,7 +1095,9 @@ macro_rules! rust_error {
 /// `warning(..., call. = FALSE)`: `conditionCall(w)` is `NULL` and the
 /// printed warning has no `In f(...) :` prefix. Use it for a warning about the
 /// data rather than about the call (see
-/// [conditions without a call](crate::error!#conditions-without-a-call)):
+/// [conditions without a call](crate::error!#conditions-without-a-call)); a
+/// leading `call = <expr>` gives the warning that call instead (see
+/// [conditions with a given call](crate::error!#conditions-with-a-given-call)):
 ///
 /// ```ignore
 /// warning!(call = none, class = "pkg_override", data = { row = row }, "row {row} overrides an earlier row");
@@ -1162,8 +1227,8 @@ macro_rules! message {
 /// `data = ...` form (after `class`, before the message) attaches named fields
 /// readable as `c$<name>` in handlers — same grammar and supported value types
 /// as [`crate::error!`] (see there for details). A leading `call = none`
-/// signals the condition without a call (`conditionCall(c)` is `NULL`), like
-/// [`crate::error!`]'s.
+/// signals the condition without a call (`conditionCall(c)` is `NULL`), and
+/// `call = <expr>` with that call, like [`crate::error!`]'s.
 ///
 /// # See also
 ///
@@ -1264,7 +1329,8 @@ macro_rules! rust_condition {
 /// conditions queued with [`crate::defer_warning!`] & co. are signalled first.
 /// The call is the one the wrapper's checks report: the wrapper's call as
 /// written, or under `#[miniextendr(call = caller)]` its caller's. A leading
-/// `call = none` raises it without a call, as for the other condition macros.
+/// `call = none` raises it without a call, and `call = <expr>` with that call,
+/// as for the other condition macros.
 /// There is no `class =` or `data =`: the classes are the crate's and the only
 /// field is `param`, so the condition is the wrapper's.
 ///
@@ -1302,9 +1368,12 @@ macro_rules! rust_condition {
 ///
 /// # Grammar
 ///
-/// `arg_error!([call = none,] param = <expr>, <format string>, <args>...)`.
-/// `param` is anything `Into<String>`. A `call` anywhere but first, a repeated
-/// one, a missing `param`, and `class =` / `data =` are compile errors:
+/// `arg_error!([call = none | call = <expr>,] param = <expr>, <format string>, <args>...)`.
+/// `param` is anything `Into<String>`; a `call` expression is a
+/// [`RCallValue`](crate::RCallValue) (or a [`ConditionCall`]), the call the
+/// error reports, such as `x$table <- value` from a replacement method. A
+/// `call` anywhere but first, a repeated one, a missing `param`, and
+/// `class =` / `data =` are compile errors:
 ///
 /// ```compile_fail
 /// # use miniextendr_api as mx;
@@ -1333,15 +1402,25 @@ macro_rules! rust_condition {
 /// mx::arg_error!(call = none, param = "mode", "'mode' is {mode:?}")
 /// # }
 /// ```
+///
+/// ```
+/// # use miniextendr_api as mx;
+/// # fn f() -> ! {
+/// let call = mx::RCallValue::new("<-")
+///     .arg(mx::RCallValue::new("$").arg(mx::RCallPart::symbol("x")).arg(mx::RCallPart::symbol("table")))
+///     .arg(mx::RCallPart::symbol("value"));
+/// mx::arg_error!(call = call, param = "value", "'value' must be a data frame")
+/// # }
+/// ```
 #[macro_export]
 macro_rules! arg_error {
-    // Internal: after the optional `call = none`.
+    // Internal: after the optional `call = ...`.
     (@param $call:expr; call $($rest:tt)*) => {
-        ::core::compile_error!("arg_error!: `call = none` is given twice")
+        ::core::compile_error!("arg_error!: `call = ...` is given twice")
     };
     (@param $call:expr; param = $param:expr, call $($rest:tt)*) => {
         ::core::compile_error!(
-            "arg_error!: `call = none` comes first, before `param`: \
+            "arg_error!: `call = ...` comes first, before `param`: \
              `arg_error!(call = none, param = \"mode\", \"...\")`"
         )
     };
@@ -1371,15 +1450,35 @@ macro_rules! arg_error {
              own argument errors; use `error!` for a classed error"
         )
     };
-    // Entry: the optional `call = none`, then `param = ...` and the message.
+    // Entry: the optional `call = none` / `call = <expr>`, then
+    // `param = ...` and the message. `none` is also an expression, so its arm
+    // comes first.
     (call = none, $($rest:tt)*) => {
         $crate::arg_error!(@param $crate::condition::ConditionCall::None; $($rest)*)
     };
+    (call = wrapper $($rest:tt)*) => {
+        $crate::arg_error!(@wrapper_or_caller)
+    };
+    (call = caller $($rest:tt)*) => {
+        $crate::arg_error!(@wrapper_or_caller)
+    };
+    (call = $call:expr, $($rest:tt)*) => {
+        $crate::arg_error!(
+            @param <$crate::condition::ConditionCall as ::core::convert::From<_>>::from($call);
+            $($rest)*
+        )
+    };
     (call $($rest:tt)*) => {
         ::core::compile_error!(
-            "arg_error!: the only call option is `call = none` (no call, like R's \
-             `call. = FALSE`), and it comes first, followed by a comma: \
-             `arg_error!(call = none, param = \"mode\", \"...\")`"
+            "arg_error!: the call option is `call = none` (no call, like R's \
+             `call. = FALSE`) or `call = <expr>` (an `RCallValue`), and it comes first, \
+             followed by a comma: `arg_error!(call = none, param = \"mode\", \"...\")`"
+        )
+    };
+    (@wrapper_or_caller) => {
+        ::core::compile_error!(
+            "arg_error!: `wrapper` and `caller` are `#[miniextendr(call = ...)]` settings; \
+             a condition's `call` is `none` or an expression giving the call (an `RCallValue`)"
         )
     };
     ($($rest:tt)*) => {
@@ -1629,13 +1728,15 @@ pub trait RConditionData {
     fn data(&self) -> Option<ConditionData> {
         None
     }
-    /// Whether the condition reports a call. [`ConditionCall::None`] makes
+    /// Which call the condition reports. [`ConditionCall::None`] makes
     /// `conditionCall()` `NULL`, like R's `call. = FALSE`, for a condition
-    /// about the data rather than the call; the default keeps the call the
-    /// transport captured. Honoured by `defer_*` and by `Result` returns;
-    /// an argument-conversion error always keeps the call (see
-    /// [`conversion_err_parts`]). `#[condition(call = none)]` on a derived
-    /// type or variant overrides this.
+    /// about the data rather than the call; [`ConditionCall::Given`] names a
+    /// call the function builds; the default keeps the call the transport
+    /// captured. Honoured by `defer_*` and by `Result` returns; an
+    /// argument-conversion error always keeps the call (see
+    /// [`conversion_err_parts`]). `#[condition(call = none)]` or
+    /// `#[condition(call = <expr>)]` on a derived type or variant overrides
+    /// this.
     fn call(&self) -> ConditionCall {
         ConditionCall::Inherit
     }
@@ -1776,6 +1877,16 @@ impl RError {
         self
     }
 
+    /// Raise the condition with `call` as its call (`conditionCall(e)`), in
+    /// place of the one the transport captured: the call the user wrote, such
+    /// as `x$table <- value` from a replacement method. Applies where
+    /// [`without_call`](Self::without_call) does; see
+    /// [`ConditionCall::Given`].
+    pub fn with_call(mut self, call: crate::RCallValue) -> Self {
+        self.call = ConditionCall::from(call);
+        self
+    }
+
     /// Append user classes (most specific first). Accepts one string or a
     /// vector, see [`ConditionClass`].
     pub fn class(mut self, class: impl ConditionClass) -> Self {
@@ -1864,7 +1975,7 @@ impl RConditionData for RError {
         (!self.data.is_empty()).then(|| self.data.clone())
     }
     fn call(&self) -> ConditionCall {
-        self.call
+        self.call.clone()
     }
     fn argument_message(&self) -> Option<String> {
         self.argument_message.clone()
@@ -3521,8 +3632,9 @@ impl RCondition {
     ///
     /// Reconstructs the matching variant for each kind: `"error"`/`"panic"`/
     /// `"result_err"`/`"none_err"`/`"other_rust_error"` →
-    /// [`RCondition::Error`] (class, message, data and a [`ConditionCall::None`]
-    /// choice kept; the kind itself is not carried by the variant);
+    /// [`RCondition::Error`] (class, message, data and a
+    /// [`ConditionCall::None`] or [`ConditionCall::Given`] choice kept; the
+    /// kind itself is not carried by the variant);
     /// `"conversion"` → [`RCondition::Conversion`], so an argument error keeps
     /// `kind = "conversion"` across a package boundary (and an
     /// [`crate::arg_error!`] its class marker, which the consumer's wrapper
@@ -3654,14 +3766,24 @@ impl RCondition {
             None
         };
 
-        // Slot [3] is the call. Only the "no call" marker (`FALSE`, see
-        // `make_rust_condition_value_with_data`) survives the re-panic: a call
-        // object captured by the producer names the vtable shim's frame, and the
-        // consumer's outer guard attributes the condition to its own call.
-        let call = if len >= 4 && is_no_call_marker(sexp.vector_elt(3)) {
-            ConditionCall::None
-        } else {
+        // Slot [3] is the call: the "no call" marker (`FALSE`, see
+        // `make_rust_condition_value_with_data`), a call the producer gave
+        // (`ConditionCall::Given`), or `NULL`. A vtable shim's guard captures
+        // no call, so a call there is a given one. One that `RCallValue` can't
+        // read (a function object in it, an environment) leaves the consumer's
+        // outer guard to attribute the condition to its own call.
+        let call = if len < 4 {
             ConditionCall::Inherit
+        } else {
+            let call = sexp.vector_elt(3);
+            if is_no_call_marker(call) {
+                ConditionCall::None
+            } else if call.is_language() {
+                crate::RCallValue::try_from_sexp(call)
+                    .map_or(ConditionCall::Inherit, ConditionCall::from)
+            } else {
+                ConditionCall::Inherit
+            }
         };
 
         let cond = match kind {
@@ -3714,8 +3836,8 @@ impl RCondition {
 }
 
 /// `true` for the tagged value's "no call" marker in the `call` slot: a
-/// length-1 logical `FALSE` ([`ConditionCall::None`]). A call object or `NULL`
-/// is not the marker.
+/// length-1 logical `FALSE` ([`ConditionCall::None`]). A call or `NULL` is
+/// not the marker.
 fn is_no_call_marker(call: crate::SEXP) -> bool {
     use crate::SexpExt;
     call.is_logical() && call.len() == 1 && call.logical_elt(0) == 0

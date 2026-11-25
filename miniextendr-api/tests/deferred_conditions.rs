@@ -53,7 +53,7 @@ fn typed_payloads_keep_kind_class_and_data() {
         assert!(
             parts
                 .iter()
-                .all(|(_, parts)| parts.call == ConditionCall::Inherit)
+                .all(|(_, parts)| matches!(parts.call, ConditionCall::Inherit))
         );
         assert!(take_pending(m).is_empty());
     });
@@ -92,19 +92,11 @@ fn call_none_is_queued_with_the_payload() {
         defer_warning(RError::new("typed").without_call());
         take_pending(m)
             .into_iter()
-            .map(|condition| condition.into_parts().1.call)
+            .map(|condition| matches!(condition.into_parts().1.call, ConditionCall::None))
             .collect::<Vec<_>>()
     });
-    assert_eq!(
-        calls,
-        [
-            ConditionCall::None,
-            ConditionCall::None,
-            ConditionCall::None,
-            ConditionCall::Inherit,
-            ConditionCall::None,
-        ]
-    );
+    // Call-less: every condition but the sibling.
+    assert_eq!(calls, [true, true, true, false, true]);
 }
 
 #[test]

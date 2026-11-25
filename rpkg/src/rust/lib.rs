@@ -254,6 +254,7 @@ mod formal_name_tests;
 mod gc_protect_tests;
 mod gc_stress_fixtures;
 mod get_option_tests;
+mod given_call_condition_tests;
 mod glob_import_tests;
 #[cfg(feature = "globset")]
 mod globset_adapter_tests;

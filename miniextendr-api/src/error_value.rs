@@ -75,9 +75,10 @@
 //! - `kind`: condition kind string — one of the constants in [`kind`]
 //! - `class`: optional user-supplied custom class (character scalar or `NULL`)
 //! - `call`: the R call SEXP, `NULL` if not available (the R helper then uses
-//!   the wrapper's call), or `FALSE` for a condition raised without a call
+//!   the wrapper's call), `FALSE` for a condition raised without a call
 //!   ([`ConditionCall::None`]: the helper signals it with `call = NULL`, like
-//!   R's `call. = FALSE`)
+//!   R's `call. = FALSE`), or the call a condition names
+//!   ([`ConditionCall::Given`])
 //! - `data`: optional named-list condition-data payload (from the macros'
 //!   `data = ...` form), or `NULL`. The R helper splices these named fields
 //!   into the condition object so handlers can read `e$<name>`.
@@ -384,8 +385,9 @@ pub unsafe fn arg_check_condition_value(
 /// * `call_choice` - [`ConditionCall::None`] writes the "no call" marker,
 ///   `FALSE`, into slot `[3]` instead of `call`: the R helper then signals the
 ///   condition with `call = NULL` rather than falling back to the wrapper's
-///   call, and [`RCondition::from_tagged_sexp`] reads the choice back across
-///   a package boundary.
+///   call. [`ConditionCall::Given`] writes its call, built here (`call` when
+///   R can't build it). [`RCondition::from_tagged_sexp`] reads either choice
+///   back across a package boundary.
 pub unsafe fn make_rust_condition_value_with_data(
     message: &str,
     kind: &str,
@@ -440,10 +442,18 @@ pub unsafe fn make_rust_condition_value_with_data(
 
         // Element 3: the call. A caller-owned SEXP (already protected) or
         // R_NilValue; for a call-less condition the "no call" marker, a fresh
-        // FALSE LGLSXP, protected until the list roots it.
+        // FALSE LGLSXP; for a given call the call built here. Both fresh ones
+        // are protected until the list roots them. A given call R can't build
+        // would raise an R error while building it, so it falls back to the
+        // captured call.
+        let captured = call.unwrap_or(SEXP::nil());
         let call_sexp = match call_choice {
-            ConditionCall::Inherit => call.unwrap_or(SEXP::nil()),
+            ConditionCall::Inherit => captured,
             ConditionCall::None => scope.protect_raw(SEXP::scalar_logical(false)),
+            ConditionCall::Given(given) => match given.unbuildable() {
+                None => scope.protect_raw((*given).build()),
+                Some(_) => captured,
+            },
         };
         list.set_vector_elt(3, call_sexp);
 
