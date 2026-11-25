@@ -144,12 +144,14 @@ prints how to enter and remove it.
    canonical runner `tests/webr-node-smoke/smoke.mjs` (the same script CI
    tier 3 uses), which imports `file:///opt/webr/src/dist/webr.mjs` (see
    "Running a webR session in Node" below), NODEFS-mounts the wasm R lib
-   tree, installs the hard Imports from repo.r-wasm.org, and drives
+   tree, installs the hard Imports from cran.r-universe.dev and
+   repo.r-wasm.org (the higher version wins; repo.r-wasm.org can lag behind
+   CRAN), and drives
    `library(miniextendr)` + `packageVersion()`. With `SMOKE_TESTTHAT=1`
    (the local-smoke default; disable with `SMOKE_TESTTHAT=0`; restrict the
    files with `SMOKE_TESTTHAT_FILTER=<regex>`, see "Rosetta" below) it then runs
    an **informational testthat pass** (#1255): the runner installs testthat
-   from `repo.r-wasm.org`, NODEFS-mounts `rpkg/tests`, and runs the suite
+   from the same repositories, NODEFS-mounts `rpkg/tests`, and runs the suite
    against the wasm install (`load_package = "installed"`, with
    `MINIEXTENDR_STRESS` unset so the opt-in gctorture blocks, which have
    their own CI job, don't run under the much slower interpreter). Suite counts are
@@ -559,7 +561,7 @@ install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
 `/tmp/wasm-lib/miniextendr`, the empirical validator for the side-module
 `RUSTFLAGS`), then **tier 3**, the Node + webR session
 (`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
-installs the package's Imports from `repo.r-wasm.org`, and drives
+installs the package's Imports from `cran.r-universe.dev` and `repo.r-wasm.org`, and drives
 `library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
 is what proves it *loads* in a real webR runtime. On `workflow_dispatch`
 runs only, tier 3 also runs the informational testthat pass (#1255,

@@ -30,11 +30,12 @@
 // webr-worker.js worker path off such a baseUrl.)
 //
 // Hard miniextendr Imports are derived from rpkg/DESCRIPTION (minus base-R
-// packages) and fetched from repo.r-wasm.org via `webR.installPackages`
-// before the library load. If the network fetch fails the smoke aborts
-// loudly — we cannot prove the side-module is healthy without the deps that
-// its NAMESPACE pulls in. (A newly added Import must exist as a wasm binary
-// on repo.r-wasm.org; this runner surfaces that requirement automatically.)
+// packages) and fetched from WASM_REPOS via `webR.installPackages` before
+// the library load. If the network fetch fails the smoke aborts loudly — we
+// cannot prove the side-module is healthy without the deps that its
+// NAMESPACE pulls in. (A newly added Import, or a raised minimum version,
+// must exist as a wasm binary in one of WASM_REPOS; this runner surfaces
+// that requirement automatically.)
 //
 // Opt-in testthat pass (#1255): when SMOKE_TESTTHAT=1, also NODEFS-mounts
 // rpkg/tests and runs the testthat suite against the already-loaded wasm
@@ -82,6 +83,13 @@ const SMOKE_TESTTHAT = process.env.SMOKE_TESTTHAT === "1";
 // Unset or empty runs the whole suite.
 const SMOKE_TESTTHAT_FILTER = process.env.SMOKE_TESTTHAT_FILTER ?? "";
 const TESTS_MOUNT = "/rpkg-tests";
+
+// The wasm package repositories, as CI's native jobs use the latest CRAN:
+// cran.r-universe.dev builds wasm binaries of current CRAN releases, while
+// repo.r-wasm.org (webR's default) can lag behind them (S7 0.2.2 there when
+// rpkg needs S7 >= 1.0.0). webr::install reads both and, where both have a
+// package, takes the higher version.
+const WASM_REPOS = ["https://cran.r-universe.dev", "https://repo.r-wasm.org"];
 
 // Base-R packages ship with webR itself — never install them from the repo.
 const R_BASE_PKGS = new Set([
@@ -142,10 +150,10 @@ async function main() {
   await webR.evalR(`.libPaths(c('${WASM_LIB_MOUNT}', .libPaths()))`);
   console.log(`[tier3] NODEFS-mounted ${HOST_WASM_LIB} -> ${WASM_LIB_MOUNT}.`);
 
-  // Pre-install miniextendr's Imports from the webR CRAN mirror.
-  console.log(`[tier3] Installing Imports from repo.r-wasm.org: ${HARD_IMPORTS.join(", ")}`);
+  // Pre-install miniextendr's Imports from the wasm CRAN repositories.
+  console.log(`[tier3] Installing Imports from ${WASM_REPOS.join(", ")}: ${HARD_IMPORTS.join(", ")}`);
   try {
-    await webR.installPackages(HARD_IMPORTS, { mount: false, quiet: false });
+    await webR.installPackages(HARD_IMPORTS, { mount: false, quiet: false, repos: WASM_REPOS });
   } catch (e) {
     console.error("[tier3] FAIL: installPackages threw:", e && e.message ? e.message : e);
     process.exitCode = 1;
@@ -322,8 +330,8 @@ async function informationalTestthat() {
   // Other Suggests (dplyr, ggplot2, ...) are deliberately NOT installed:
   // tests guarded by skip_if_not_installed() skip, and anything else that
   // fails on a missing Suggest is tolerated noise in an informational pass.
-  console.log("[tier3][testthat] Installing testthat from repo.r-wasm.org...");
-  await webR.installPackages(["testthat"], { mount: false, quiet: false });
+  console.log(`[tier3][testthat] Installing testthat from ${WASM_REPOS.join(", ")}...`);
+  await webR.installPackages(["testthat"], { mount: false, quiet: false, repos: WASM_REPOS });
 
   // Mount rpkg/tests (not the whole source tree — the suite only needs the
   // tests dir, and the package code itself comes from the wasm install
