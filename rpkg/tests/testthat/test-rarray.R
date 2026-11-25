@@ -28,8 +28,9 @@ test_that("RMatrix column extraction works", {
 test_that("matrix metadata, a cell and a column can leave compact real input unexpanded", {
   has_buffer <- miniextendr:::rarray_matrix_has_buffer
   for (direct in c(FALSE, TRUE)) {
-    # structure() attaches dimensions without expanding R's compact REALSXP.
-    x <- structure(as.double(seq_len(3075L)), dim = c(1025L, 3L))
+    # A compact REALSXP with its dim set in place. structure() returns a wrapper,
+    # and from R 4.6.2 the buffer probe expands a wrapper's shared compact data.
+    x <- miniextendr:::rarray_compact_matrix(1025L, 3L, TRUE)
     expect_false(has_buffer(x))
     if (direct) {
       dims <- .Call(miniextendr:::C_miniextendr_rarray_matrix_dims, NULL, x)
@@ -60,7 +61,7 @@ test_that("matrix metadata, a cell and a column can leave compact real input une
 })
 
 test_that("a compact matrix with an existing buffer yields the same column", {
-  x <- structure(as.double(seq_len(3075L)), dim = c(1025L, 3L))
+  x <- miniextendr:::rarray_compact_matrix(1025L, 3L, TRUE)
   expect_false(miniextendr:::rarray_matrix_has_buffer(x))
   # The slice conversion deliberately requests contiguous data from this provider.
   expect_identical(miniextendr:::test_f64_slice_len(x), 3075L)
@@ -84,11 +85,11 @@ test_that("a returned column preserves double values and drops matrix attributes
 })
 
 test_that("direct matrix entry validates the current shape and returns a tagged Result error", {
-  x <- structure(as.double(seq_len(3075L)), dim = c(1025L, 3L))
+  x <- miniextendr:::rarray_compact_matrix(1025L, 3L, TRUE)
   direct <- function(x, col) .Call(miniextendr:::C_miniextendr_rarray_matrix_column, NULL, x, col)
   expect_identical(direct(x, 3L), as.double(2050L + seq_len(1025L)))
-  # Attach a different shape to the same compact values, invalidating column 3.
-  x <- structure(x, dim = c(3075L, 1L))
+  # The same compact values in another shape, which has no column 3.
+  x <- miniextendr:::rarray_compact_matrix(3075L, 1L, TRUE)
   expect_false(miniextendr:::rarray_matrix_has_buffer(x))
   bad <- direct(x, 3L)
   expect_s3_class(bad, "rust_condition_value")
@@ -111,7 +112,7 @@ test_that("a matrix column consumes short reads and reports an incomplete provid
 })
 
 test_that("RMatrix attribute getters return both dimname axes", {
-  m <- structure(as.double(seq_len(3075L)), dim = c(1025L, 3L), dimnames = list(
+  m <- miniextendr:::rarray_compact_matrix(1025L, 3L, TRUE, dimnames = list(
     paste0("row-", seq_len(1025L)),
     c("col-a", "col-b", "col-c")
   ))
@@ -162,7 +163,7 @@ test_that("a column keeps the matrix's native type", {
 })
 
 test_that("a compact integer matrix gives a column without a buffer", {
-  x <- structure(seq_len(600L), dim = c(300L, 2L))
+  x <- miniextendr:::rarray_compact_matrix(300L, 2L, FALSE)
   has_buffer <- miniextendr:::rarray_int_matrix_has_buffer
   expect_false(has_buffer(x))
   expect_identical(miniextendr:::rarray_int_matrix_column(x, 2L), 301:600)

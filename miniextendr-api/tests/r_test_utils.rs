@@ -92,6 +92,20 @@ where
         .expect("R test thread dropped the response")
     {
         Ok(value) => value,
-        Err(panic) => std::panic::resume_unwind(panic),
+        Err(panic) => {
+            // The R thread's panic printed nothing: miniextendr's panic hook
+            // is silent without MINIEXTENDR_BACKTRACE, and `resume_unwind`
+            // runs no hook. Print the message here, on the test's thread,
+            // where libtest captures it into the failure report.
+            let message = panic
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| panic.downcast_ref::<String>().map(String::as_str));
+            eprintln!(
+                "the R thread panicked: {}",
+                message.unwrap_or("(a payload that is not a string)")
+            );
+            std::panic::resume_unwind(panic)
+        }
     }
 }

@@ -299,19 +299,27 @@ fn matrix_columns_of_every_native_type_copy_through_regions() {
 
         // R's compact integer sequence keeps no buffer: its column is read
         // through the class's own Get_region, and the sequence stays compact.
-        let compact = Preserved::new(
-            miniextendr_api::r_eval_str_global("structure(seq_len(600L), dim = c(300L, 2L))")
-                .unwrap(),
-        );
+        // The dim is set in place, as for the providers above: `structure()`
+        // would return a wrapper, whose `Dataptr_or_null` expands shared
+        // compact data from R 4.6.2.
+        let compact = Preserved::new(miniextendr_api::r_eval_str_global("seq_len(600L)").unwrap());
+        let shape = Preserved::new([300_i32, 2]);
+        compact.as_sexp().set_dim(shape.as_sexp());
         assert!(compact.as_sexp().is_altrep());
-        assert!(i32::dataptr_or_null(compact.as_sexp()).is_null());
+        assert!(
+            i32::dataptr_or_null(compact.as_sexp()).is_null(),
+            "R expanded the compact sequence before the copy"
+        );
         let matrix = RMatrix::<i32>::try_from_sexp(compact.as_sexp()).unwrap();
         let column = matrix.copy_column_to_r(1).unwrap();
         assert_eq!(
             column.as_sexp().as_slice::<i32>(),
             (301..=600).collect::<Vec<_>>().as_slice()
         );
-        assert!(i32::dataptr_or_null(compact.as_sexp()).is_null());
+        assert!(
+            i32::dataptr_or_null(compact.as_sexp()).is_null(),
+            "the column copy expanded the compact sequence"
+        );
     });
 }
 
