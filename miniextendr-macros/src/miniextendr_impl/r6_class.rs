@@ -455,9 +455,16 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             .null_call_attribution()
             .with_self("private$.ptr")
             .build();
+        // Like every lambda here, it raises a tagged condition instead of
+        // dropping it (#1675); `.call = NULL`, so no call either.
+        let raise = crate::method_return_builder::condition_check_lines_with_default(
+            "",
+            crate::r_wrapper_builder::CallAttribution::NoCall.raise_default(),
+        )
+        .concat();
         lines.push(String::new());
         lines.push(format!(
-            "{class_name}$set(\"private\", \"finalize\", function() {finalize_call})"
+            "{class_name}$set(\"private\", \"finalize\", function() {{ .val <- {finalize_call}; {raise}; invisible(NULL) }})"
         ));
     }
 
@@ -475,9 +482,16 @@ pub fn generate_r6_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             .with_self("private$.ptr")
             .with_args(&["name", "value"])
             .build();
+        // The clone's field is the returned value, so a tagged condition is
+        // raised, never stored (#1675).
+        let raise = crate::method_return_builder::condition_check_lines_with_default(
+            "",
+            crate::r_wrapper_builder::CallAttribution::NoCall.raise_default(),
+        )
+        .concat();
         lines.push(String::new());
         lines.push(format!(
-            "{class_name}$set(\"private\", \"deep_clone\", function(name, value) {deep_clone_call})"
+            "{class_name}$set(\"private\", \"deep_clone\", function(name, value) {{ .val <- {deep_clone_call}; {raise}; .val }})"
         ));
     }
 

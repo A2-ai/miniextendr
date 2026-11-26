@@ -3060,6 +3060,32 @@ fn shared_member_names(first: &ClassWrapper, second: &ClassWrapper) -> Vec<Strin
         .collect()
 }
 
+/// The private lambdas raise a tagged condition from the Rust side instead of
+/// dropping it: a failed finalizer is reported, never silent (#1675).
+#[test]
+fn r6_finalizer_raises_a_rust_condition() {
+    let parsed = parse_impl(
+        ClassSystem::R6,
+        syn::parse_quote! {
+            impl Counter {
+                pub fn new() -> Self { unimplemented!() }
+                #[miniextendr(r6(finalize))]
+                pub fn close(&mut self) {}
+            }
+        },
+    );
+    let wrapper = generate_r6_class(&parsed).render();
+    assert!(
+        wrapper.contains(
+            "Counter$set(\"private\", \"finalize\", function() { .val <- \
+             .Call(C_miniextendr_macros_Counter__close, .call = NULL, private$.ptr); \
+             if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) \
+             return(.miniextendr_raise_condition(.val, NULL)); invisible(NULL) })"
+        ),
+        "{wrapper}"
+    );
+}
+
 /// The `deep_clone` handler is the private `deep_clone` member only, like the
 /// finalizer: not also a public method.
 #[test]
@@ -3077,8 +3103,10 @@ fn r6_deep_clone_is_not_a_public_method() {
     let wrapper = class.render();
     assert!(
         wrapper.contains(
-            "Counter$set(\"private\", \"deep_clone\", function(name, value) \
-             .Call(C_miniextendr_macros_Counter__clone_field, .call = NULL, private$.ptr, name, value))"
+            "Counter$set(\"private\", \"deep_clone\", function(name, value) { .val <- \
+             .Call(C_miniextendr_macros_Counter__clone_field, .call = NULL, private$.ptr, name, value); \
+             if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) \
+             return(.miniextendr_raise_condition(.val, NULL)); .val })"
         ),
         "{wrapper}"
     );
@@ -5065,6 +5093,16 @@ fn s7_property_validator() {
         wrapper.contains("C_miniextendr_macros_Score__validate_score"),
         "Expected validator C function call, got:\n{}",
         wrapper
+    );
+    // The validator's `Err` is raised, never handed to S7 as its result (#1675).
+    assert!(
+        wrapper.contains(
+            "validator = function(value) { .val <- \
+             .Call(C_miniextendr_macros_Score__validate_score, .call = NULL, value); \
+             if (inherits(.val, \"rust_condition_value\") && isTRUE(attr(.val, \"__rust_condition__\"))) \
+             return(.miniextendr_raise_condition(.val, NULL)); .val }"
+        ),
+        "{wrapper}"
     );
 }
 

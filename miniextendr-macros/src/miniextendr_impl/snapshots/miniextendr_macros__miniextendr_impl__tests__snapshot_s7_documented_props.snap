@@ -12,7 +12,7 @@ expression: generate_s7_r_wrapper(&parsed)
 Documented <- S7::new_class("Documented",
   properties = list(
     .ptr = S7::class_any,
-    count = S7::new_property(class = S7::class_integer, getter = function(self) .Call(C_miniextendr_macros_Documented__count, .call = NULL, self@.ptr), setter = function(self, value) { .Call(C_miniextendr_macros_Documented__count, .call = NULL, self@.ptr); self })
+    count = S7::new_property(class = S7::class_integer, getter = function(self) { .val <- .Call(C_miniextendr_macros_Documented__count, .call = NULL, self@.ptr); if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, NULL)); .val }, setter = function(self, value) { .val <- .Call(C_miniextendr_macros_Documented__count, .call = NULL, self@.ptr); if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, NULL)); self })
   ),
   constructor = function(.ptr = NULL) {
     if (!is.null(.ptr)) {

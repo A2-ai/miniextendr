@@ -809,6 +809,18 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
     let mut prop_items: Vec<String> = Vec::new();
     prop_items.push("    .ptr = S7::class_any".to_string());
 
+    // Every lambda below keeps the `.Call()` result in `.val` and raises a
+    // tagged condition before using it: a lambda that returned or discarded it
+    // would hand R the condition object as the property value, or drop the
+    // setter's refusal, and S7 calls a property's setter without checking the
+    // value's class first (#1675). `.call = NULL` in the slot, so the raise
+    // falls back to no call too.
+    let raise = crate::method_return_builder::condition_check_lines_with_default(
+        "",
+        crate::r_wrapper_builder::CallAttribution::NoCall.raise_default(),
+    )
+    .concat();
+
     // Generate computed/dynamic properties
     for prop in properties.values() {
         // Generate property definition
@@ -843,7 +855,9 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 .null_call_attribution()
                 .with_args(&["value"])
                 .build();
-            prop_parts.push(format!("validator = function(value) {validator_call}"));
+            prop_parts.push(format!(
+                "validator = function(value) {{ .val <- {validator_call}; {raise}; .val }}"
+            ));
         }
 
         // Generate getter (with optional deprecation warning)
@@ -854,14 +868,15 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let ctx = MethodContext::new(getter_method, type_ident).without_prelude();
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let getter_call = ctx.instance_call_null_attr("self@.ptr");
+            let get = format!(".val <- {getter_call}; {raise}; .val");
             if let Some(ref msg) = prop.deprecated {
                 // Deprecated getter: emit warning then return value
                 prop_parts.push(format!(
                     "getter = function(self) {{ warning(\"Property @{} is deprecated: {}\"); {} }}",
-                    prop.name, msg, getter_call
+                    prop.name, msg, get
                 ));
             } else {
-                prop_parts.push(format!("getter = function(self) {}", getter_call));
+                prop_parts.push(format!("getter = function(self) {{ {get} }}"));
             }
         }
 
@@ -873,6 +888,7 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
             let ctx = MethodContext::new(setter_method, type_ident).without_prelude();
             // Use null_call_attribution: runs inside S7's property dispatch lambda.
             let setter_call = ctx.instance_call_null_attr("self@.ptr");
+            let set = format!(".val <- {setter_call}; {raise}");
 
             if prop.frozen {
                 // Frozen pattern: error if property was already set (non-NULL)
@@ -881,26 +897,23 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
                 if let Some(ref msg) = prop.deprecated {
                     prop_parts.push(format!(
                         "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
-                        prop.name, msg, prop.name, prop.name, setter_call
+                        prop.name, msg, prop.name, prop.name, set
                     ));
                 } else {
                     prop_parts.push(format!(
                         "setter = function(self, value) {{ if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
-                        prop.name, prop.name, setter_call
+                        prop.name, prop.name, set
                     ));
                 }
             } else if let Some(ref msg) = prop.deprecated {
                 // Deprecated setter: emit warning then set value
                 prop_parts.push(format!(
                     "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); {}; self }}",
-                    prop.name, msg, setter_call
+                    prop.name, msg, set
                 ));
             } else {
                 // Normal setter
-                prop_parts.push(format!(
-                    "setter = function(self, value) {{ {}; self }}",
-                    setter_call
-                ));
+                prop_parts.push(format!("setter = function(self, value) {{ {set}; self }}"));
             }
         }
 
