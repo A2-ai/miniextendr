@@ -38,8 +38,13 @@ pub fn shapes(
     o: Checked<Option<i32>>,
     s: Checked<&str>,
     xs: Unchecked<&[f64]>,
+    k: Unchecked<&i32>,
 ) -> f64 {
-    f64::from(*n) + f64::from(o.unwrap_or(0)) + s.len() as f64 + xs.iter().sum::<f64>()
+    f64::from(*n)
+        + f64::from(o.unwrap_or(0))
+        + s.len() as f64
+        + xs.iter().sum::<f64>()
+        + f64::from(**k)
 }
 
 #[derive(miniextendr_api::ExternalPtr)]

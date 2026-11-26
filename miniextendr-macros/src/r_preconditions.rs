@@ -1242,17 +1242,18 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
 
 /// Map a reference type to its R-side type check.
 ///
-/// Handles `&str` and `&Path` (character scalar), `&[T]` (vector based on element type),
-/// and `&Dots` (skipped). Returns `None` for unrecognized reference types.
+/// Handles `&str` and `&Path` (character scalar), a borrowed native scalar
+/// (`&i32`, `&f64`, `&u8`, `&Rcomplex`, shared or `mut`: the check of the
+/// scalar itself, since the borrow reads the same one-element vector,
+/// #1675), `&[T]` (vector based on element type), and `&Dots` (skipped).
+/// Returns `None` for unrecognized reference types.
 fn r_check_for_reference(type_ref: &syn::TypeReference) -> Option<RTypeCheck> {
     match type_ref.elem.as_ref() {
-        // &str → character scalar
         syn::Type::Path(tp) => {
             let seg = tp.path.segments.last()?;
             match seg.ident.to_string().as_str() {
-                "str" => Some(RTypeCheck::Scalar("character")),
-                "Path" => Some(RTypeCheck::Scalar("character")),
-                "Dots" => None,
+                "str" | "Path" => Some(RTypeCheck::Scalar("character")),
+                "i32" | "f64" | "u8" | "Rcomplex" => r_check_for_type_path(tp),
                 _ => None,
             }
         }
