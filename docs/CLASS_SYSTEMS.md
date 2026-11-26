@@ -662,9 +662,11 @@ S7::method(print, Point) <- function(x, ...) {
 }
 ```
 
-A subclass (`s7(parent = "Shape")`) builds its parent part with the parent's
-constructor, through that constructor's `.ptr` shortcut, since S7 requires the
-first argument of `new_object()` to be an instance of the parent class:
+A subclass (`s7(parent = "Shape")`) chooses the first argument of
+`new_object()` as S7's own constructors do. For a concrete parent, S7 requires
+an instance of it, which the subclass builds with the parent's constructor
+through that constructor's `.ptr` shortcut. For an abstract parent it passes
+`S7::S7_object()`, so the parent's constructor doesn't run:
 
 ```r
 Circle <- S7::new_class("Circle", parent = Shape,
@@ -673,19 +675,34 @@ Circle <- S7::new_class("Circle", parent = Shape,
     ),
     constructor = function(radius, .ptr = NULL) {
         if (!is.null(.ptr)) {
-            S7::new_object(Shape(.ptr = .ptr), .ptr = .ptr)
+            S7::new_object(if (Shape@abstract) S7::S7_object() else Shape@constructor(.ptr = .ptr), .ptr = .ptr)
         } else {
             .val <- .Call(C_mypkg_Circle__new, radius)
-            S7::new_object(Shape(.ptr = .val), .ptr = .val)
+            S7::new_object(if (Shape@abstract) S7::S7_object() else Shape@constructor(.ptr = .val), .ptr = .val)
         }
     }
 )
 ```
 
-The parent may be abstract (`s7(abstract)`): S7 runs an abstract class's
-constructor while it builds the parent part of a subclass. The generated S7
-code needs S7 1.0.0 or later, so `minirextendr::use_s7()` adds
-`S7 (>= 1.0.0)` to `Imports`.
+`@abstract` is read from the class object when a `Circle` is built, so the
+parent can be any S7 class whose constructor takes `.ptr` (every miniextendr
+class, `s7(abstract)` ones included), or any abstract S7 class, such as one
+written by hand in R. A bare name that no Rust type in the package registers
+is written as is; give a class from another package as `pkg::Class`. A
+hand-written parent in the package must be defined in a file that R sources
+before the wrappers file. Without a `Collate` field, R sources the files in
+name order. The wrappers writer reports a bare parent name only when neither
+a Rust type nor a top-level binding in one of the package's R files defines it.
+
+Two limits come from the parent's constructor not running:
+
+- An abstract parent's stored properties are not set, so S7 refuses the
+  object. A dynamic property (`new_property(getter = ...)`) works (#2419).
+- A concrete parent written in R has no `.ptr` formal, so its constructor
+  can't be called this way (#2387).
+
+The generated S7 code needs S7 1.0.0 or later, so `minirextendr::use_s7()`
+adds `S7 (>= 1.0.0)` to `Imports`.
 
 ### Usage
 
@@ -1379,10 +1396,12 @@ class a trait impl attaches to (#2266): an S3 or vctrs trait impl's
 `generic.<class>` methods and their registration, the `<class>$Trait`
 namespace of Env, S3, R6 and vctrs, the S4 method signature, the S7 class
 object, and a trait method's `Self` return. Where the named object must
-exist (R6, S7, S4), an unregistered name prints a warning when the wrappers
-are written and falls through to the bare identifier, which fails at R load.
-Where any string is a class (S3, Env, vctrs), the fallback to the Rust name
-is quiet (`.__MX_CLASS_REF_OR_BARE_<Type>__`).
+exist (R6, S7, S4), an unregistered name falls through to the bare
+identifier. The wrappers writer prints a warning for it unless one of the
+package's R files binds the name at the top level (an R6 or S7 class written
+by hand, #2387), since otherwise it fails at R load. Where any string is a
+class (S3, Env, vctrs), the fallback to the Rust name is quiet
+(`.__MX_CLASS_REF_OR_BARE_<Type>__`).
 
 The R names a trait impl builds from its class take the quiet form too
 (#2285): the S4 trait statics and consts (`Point_Trait_member()`), the S7

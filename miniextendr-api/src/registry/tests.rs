@@ -52,7 +52,7 @@ fn optional_preamble_helpers_follow_fragment_dependencies() {
 /// `entries` as the registry.
 fn resolve_refs(content: &str, entries: &[ClassNameEntry]) -> String {
     let class_index = build_class_name_index(entries.iter());
-    resolve_class_refs(content, &class_index)
+    resolve_class_refs(content, &class_index).0
 }
 
 /// Two impl blocks of one type register identical entries (#1242, #1776);
@@ -764,15 +764,32 @@ fn or_any_registered_non_s7_type_falls_back_to_class_any() {
     assert_eq!(output, "class = S7::class_any");
 }
 
+/// A loud placeholder no class registers is written as its bare Rust name and
+/// returned, once, for the writer to report unless the package's R files bind
+/// it (#2387); the quiet forms and resolved names are not returned.
 #[test]
-fn loud_class_ref_still_emits_bare_name_when_unresolved() {
-    // The existing CLASS_REF variant (without OR_ANY) keeps its loud
-    // behavior: bare Rust name + compile-time warning. Regression test
-    // for that path alongside the OR_ANY introduction.
-    let entries: [ClassNameEntry; 0] = [];
-    let input = "parent = .__MX_CLASS_REF_UnknownClass__";
-    let output = resolve_refs(input, &entries);
-    assert_eq!(output, "parent = UnknownClass");
+fn loud_class_ref_unresolved_is_returned_for_the_writer() {
+    let entries = [ClassNameEntry {
+        rust_type: "Known",
+        r_class_name: "Known",
+        class_system: "s7",
+        field_syntax: false,
+        read_only_fields: false,
+    }];
+    let class_index = build_class_name_index(entries.iter());
+    let input = "parent = .__MX_CLASS_REF_HandShape__, again = .__MX_CLASS_REF_HandShape__, \
+                 known = .__MX_CLASS_REF_Known__, bare = .__MX_CLASS_REF_OR_BARE_Tag__, \
+                 any = .__MX_CLASS_REF_OR_ANY_Prop__, other = .__MX_CLASS_REF_Absent__";
+    let (output, unresolved) = resolve_class_refs(input, &class_index);
+    assert_eq!(
+        output,
+        "parent = HandShape, again = HandShape, known = Known, bare = Tag, \
+         any = S7::class_any, other = Absent"
+    );
+    assert_eq!(
+        unresolved.into_iter().collect::<Vec<_>>(),
+        ["Absent", "HandShape"]
+    );
 }
 
 #[test]

@@ -931,14 +931,27 @@ pub fn generate_s7_class(parsed_impl: &ParsedImpl) -> super::ClassWrapper {
         lines.push("  ),".to_string());
     }
 
-    // `S7::new_object()`'s first argument for an object holding `ptr`. S7
-    // requires an instance of the parent class there, so a subclass builds its
-    // parent part with the parent's constructor, through the `.ptr` shortcut
-    // every generated constructor has. S7 lets an abstract parent's constructor
-    // run while it builds that part. A class without a parent starts from
-    // `S7::S7_object()`.
+    // `S7::new_object()`'s first argument for an object holding `ptr`, chosen
+    // as S7's own `new_constructor()` chooses it. A concrete parent's part is
+    // an instance of it, built with its constructor through the `.ptr`
+    // shortcut every generated constructor has (S7 1.0 requires an instance
+    // of a concrete parent there). An abstract parent's part is
+    // `S7::S7_object()`, which S7 accepts for one, so the parent's own
+    // constructor never runs: a hand-written abstract parent has no `.ptr`
+    // formal (#2387). A class without a parent starts from `S7::S7_object()`
+    // too. The parent is a class object, so `@abstract` is decided when the
+    // subclass is constructed, whichever package defines it.
+    //
+    // The constructor is called as `{p}@constructor`, the same function as
+    // the class object: called by its name, codetools (`R CMD check`) and the
+    // byte compiler would report `.ptr` as an unused argument of a
+    // hand-written abstract parent in the same package, in the branch the
+    // `@abstract` test never takes.
     let parent_object = |ptr: &str| match &parsed_impl.s7_parent {
-        Some(parent) => format!("{}(.ptr = {ptr})", class_ref_or_verbatim(parent)),
+        Some(parent) => {
+            let p = class_ref_or_verbatim(parent);
+            format!("if ({p}@abstract) S7::S7_object() else {p}@constructor(.ptr = {ptr})")
+        }
         None => "S7::S7_object()".to_string(),
     };
 

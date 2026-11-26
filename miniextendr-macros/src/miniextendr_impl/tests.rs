@@ -5418,19 +5418,23 @@ fn s7_wrapper_parent() {
         wrapper.contains("Circle <- S7::new_class(\"Circle\", parent = .__MX_CLASS_REF_Shape__,")
     );
 
-    // S7 1.0 requires `new_object()`'s first argument to be an instance of the
-    // parent class: the constructor builds it with the parent's constructor,
-    // through its `.ptr` shortcut, on both of its paths.
+    // `new_object()`'s first argument is chosen as S7's `new_constructor()`
+    // chooses it: `S7::S7_object()` for an abstract parent, else an instance
+    // built with the parent's constructor through its `.ptr` shortcut, on both
+    // of the constructor's paths (#2387). The constructor is read from the class
+    // object, so codetools doesn't check the call against a hand-written
+    // abstract parent's formals.
     for expected in [
-        "S7::new_object(.__MX_CLASS_REF_Shape__(.ptr = .ptr), .ptr = .ptr)",
-        "S7::new_object(.__MX_CLASS_REF_Shape__(.ptr = .val), .ptr = .val)",
+        "S7::new_object(if (.__MX_CLASS_REF_Shape__@abstract) S7::S7_object() \
+         else .__MX_CLASS_REF_Shape__@constructor(.ptr = .ptr), .ptr = .ptr)",
+        "S7::new_object(if (.__MX_CLASS_REF_Shape__@abstract) S7::S7_object() \
+         else .__MX_CLASS_REF_Shape__@constructor(.ptr = .val), .ptr = .val)",
     ] {
         assert!(
             wrapper.contains(expected),
             "missing `{expected}`:\n{wrapper}"
         );
     }
-    assert!(!wrapper.contains("S7::S7_object()"), "{wrapper}");
 
     // A subclass without a constructor wraps its pointer the same way.
     let item_impl: syn::ItemImpl = syn::parse_quote! {
@@ -5443,10 +5447,36 @@ fn s7_wrapper_parent() {
     let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
     let wrapper = generate_s7_r_wrapper(&parsed);
     assert!(
-        wrapper.contains("    S7::new_object(.__MX_CLASS_REF_Shape__(.ptr = .ptr), .ptr = .ptr)"),
+        wrapper.contains(
+            "    S7::new_object(if (.__MX_CLASS_REF_Shape__@abstract) S7::S7_object() \
+             else .__MX_CLASS_REF_Shape__@constructor(.ptr = .ptr), .ptr = .ptr)"
+        ),
         "{wrapper}"
     );
-    assert!(!wrapper.contains("S7::S7_object()"), "{wrapper}");
+
+    // A qualified parent from another package, possibly written by hand in R,
+    // passes through verbatim; whether it is abstract is read from the class
+    // object when the subclass is constructed.
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Circle {
+            pub fn new(radius: f64) -> Self { unimplemented!() }
+        }
+    };
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.s7_parent = Some("otherpkg::Base".to_string());
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    assert!(
+        wrapper.contains("Circle <- S7::new_class(\"Circle\", parent = otherpkg::Base,"),
+        "{wrapper}"
+    );
+    assert!(
+        wrapper.contains(
+            "S7::new_object(if (otherpkg::Base@abstract) S7::S7_object() \
+             else otherpkg::Base@constructor(.ptr = .val), .ptr = .val)"
+        ),
+        "{wrapper}"
+    );
 }
 
 #[test]

@@ -515,10 +515,19 @@ later, unpredictably.
   not covered.
 
 - **S7 subclass constructor**: a class with `s7(parent = "P")` calls
-  `S7::new_object(P(.ptr = .val), .ptr = .val)`: S7 1.0 requires an instance
-  of the parent class as `new_object()`'s first argument (and runs an
-  abstract parent's constructor while building that part). Root classes use
+  `S7::new_object(if (P@abstract) S7::S7_object() else P@constructor(.ptr = .val), .ptr = .val)`,
+  as S7's own constructors choose that argument: S7 1.0 requires an instance
+  of a concrete parent, and takes `S7_object()` for an abstract one, whose
+  constructor then doesn't run, so the parent can be an abstract class written
+  in R (#2387). `P@constructor` keeps codetools from checking `.ptr` against a
+  hand-written parent's formals. An abstract parent's stored properties stay
+  unset (S7 refuses the object; dynamic ones work, #2419), and a concrete
+  hand-written parent has no `.ptr` (#2387). Root classes use
   `S7::S7_object()`. The generated S7 code needs S7 >= 1.0.0.
+- **Unregistered class references**: a bare `s7(parent = ...)` /
+  `r6(inherit = ...)` name no Rust type registers is written as is; the
+  wrappers writer (`write_r_wrappers_to_file`) warns unless a top-level
+  binding in one of the package's `R/` files defines it.
 
 - **S3 `@export` on conditional generic**: `if (!exists("generic", mode = "function")) { generic <- function(x, ...) UseMethod("generic") }` is not introspectable by roxygen2. Adding `#' @export` directly above it causes roxygen to drift the export onto the next function. Use `#' @export generic_name` (explicit target) instead. The macro generator handles this correctly.
 

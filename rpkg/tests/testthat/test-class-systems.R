@@ -407,6 +407,28 @@ test_that("S7 multi-level inheritance: own and inherited methods", {
   # This is a known limitation of ExternalPtr-based S7 inheritance.
 })
 
+test_that("an S7 class's abstract parent can be written in R (#2387)", {
+  skip_if_not_installed("S7")
+
+  square <- MxS7HandSquare(3)
+  expect_s3_class(square, "miniextendr::MxS7HandShape")
+  expect_true(S7::S7_inherits(square, MxS7HandSquare))
+  expect_true(S7::S7_inherits(square, MxS7HandShape))
+  expect_equal(hand_square_area(square), 9)
+  # The parent's method and dynamic property, written in R, reach the Rust
+  # subclass.
+  expect_equal(mx_hand_shape_kind(square), "hand-written shape")
+  expect_equal(square@family, "shape")
+
+  # A returned `Self` goes through the constructor's `.ptr` branch.
+  bigger <- hand_square_scaled(square, 2)
+  expect_true(S7::S7_inherits(bigger, MxS7HandShape))
+  expect_equal(hand_square_area(bigger), 36)
+
+  # S7 still refuses to construct the abstract parent itself.
+  expect_error(MxS7HandShape(), "abstract")
+})
+
 # =============================================================================
 # R6 Inheritance tests
 # =============================================================================
