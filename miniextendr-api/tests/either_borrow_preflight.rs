@@ -54,7 +54,7 @@ fn wrapper_call<T: TryFromSexp + 'static>(
     let condition = unsafe {
         let scope = ProtectScope::new();
         let result = scope.protect(result);
-        RCondition::from_tagged_sexp(result.get()).map(|c| c.message().to_owned())
+        RCondition::from_tagged_sexp(result.get()).map(|c| c.message)
     };
     match condition {
         Some(message) => Err(message),

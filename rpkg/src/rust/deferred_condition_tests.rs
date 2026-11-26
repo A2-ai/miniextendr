@@ -9,7 +9,7 @@
 //! - The rng and s3-method fixtures exercise the RNG wrapper template and
 //!   the class-wrapping R side.
 
-use miniextendr_api::condition::{RCondition, RError};
+use miniextendr_api::condition::{ConditionKind, RCondition, RError};
 use miniextendr_api::{
     TryFromSexp as _, defer_condition, defer_message, defer_warning, miniextendr, rust_error,
 };
@@ -456,7 +456,7 @@ pub fn deferred_capture(requeue: bool) -> Vec<String> {
         defer_warning!(class = "pkg_replayed", "replayed warning");
         defer_message!("replayed message");
     });
-    let messages = captured.iter().map(|c| c.message().to_string()).collect();
+    let messages = captured.iter().map(|c| c.message.clone()).collect();
     if requeue {
         captured.into_iter().for_each(RCondition::defer);
     }
@@ -487,7 +487,12 @@ pub fn caught_condition_refusal(fail: bool) -> i32 {
     let (outcome, _replayed) = capture(|| catch_condition(|| replay_step(fail)));
     match outcome {
         Ok(value) => value,
-        Err(RCondition::Error { message, class, .. }) => rust_error!(
+        Err(RCondition {
+            kind: ConditionKind::Error,
+            message,
+            class,
+            ..
+        }) => rust_error!(
             class = "pkg_refused",
             data = ("cause_class", class.join(" ")),
             "refused: {message}"

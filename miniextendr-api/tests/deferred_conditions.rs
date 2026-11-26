@@ -108,7 +108,7 @@ fn capture_takes_only_the_block_s_conditions() {
             defer_warning!(class = "replayed", "inside {}", 1);
             let ((), nested) = capture(|| defer_message!("nested"));
             assert_eq!(nested.len(), 1);
-            assert_eq!(nested[0].message(), "nested");
+            assert_eq!(nested[0].message, "nested");
             defer_condition!("last");
             7
         });
@@ -121,7 +121,7 @@ fn capture_takes_only_the_block_s_conditions() {
         assert_eq!(parts[1].0, kind::CONDITION);
         let remaining = take_pending(outer);
         assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].message(), "before");
+        assert_eq!(remaining[0].message, "before");
     });
 }
 
@@ -135,10 +135,10 @@ fn capture_leaves_the_queue_on_unwind() {
                 miniextendr_api::error!("failed");
             })
         });
-        assert_eq!(caught.unwrap_err().message(), "failed");
+        assert_eq!(caught.unwrap_err().message, "failed");
         let remaining = take_pending(start);
         assert_eq!(remaining.len(), 1);
-        assert_eq!(remaining[0].message(), "queued before the error");
+        assert_eq!(remaining[0].message, "queued before the error");
 
         // Catching inside the capture keeps the block's conditions with it.
         let (outcome, captured) = capture(|| {
@@ -147,7 +147,7 @@ fn capture_leaves_the_queue_on_unwind() {
                 miniextendr_api::error!("failed");
             })
         });
-        assert_eq!(outcome.unwrap_err().message(), "failed");
+        assert_eq!(outcome.unwrap_err().message, "failed");
         assert_eq!(captured.len(), 1);
         assert!(take_pending(start).is_empty());
     });
@@ -198,7 +198,7 @@ fn capture_takes_a_joined_thread_s_conditions() {
         });
         let messages: Vec<String> = captured
             .iter()
-            .map(|condition| condition.message().to_string())
+            .map(|condition| condition.message.clone())
             .collect();
         assert!(take_pending(0).is_empty());
         messages
@@ -221,7 +221,7 @@ fn a_full_channel_drops_the_newest_and_says_how_many() {
         .unwrap();
         take_pending(start)
             .into_iter()
-            .map(|condition| condition.message().to_string())
+            .map(|condition| condition.message.clone())
             .collect::<Vec<_>>()
     });
     assert_eq!(messages.len(), 1025);

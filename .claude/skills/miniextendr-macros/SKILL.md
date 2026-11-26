@@ -116,8 +116,9 @@ conditions only fire for panics and unwrapped errors).
 ### `RCondition` macros
 
 The `error!()`, `warning!()`, `message!()`, `condition!()` macros in
-`miniextendr-api/src/condition.rs` produce `RCondition` enum payloads that ride
-the same tagged-SEXP transport. The `RCondition` variant is recognised by
+`miniextendr-api/src/condition.rs` produce `RCondition` payloads (a struct:
+`kind: ConditionKind`, `message`, `class`, `data`, `call`) that ride the same
+tagged-SEXP transport. The `RCondition` payload is recognised by
 `with_r_unwind_protect` before the generic panic-to-string path.
 
 Name collision caution: `pub mod error` and `pub mod condition` exist at the
@@ -374,7 +375,7 @@ Cargo feature.
   `write_r_wrappers_to_file`.
 - `miniextendr-api/src/error_value.rs` — `make_rust_condition_value`;
   tagged SEXP format.
-- `miniextendr-api/src/condition.rs` — `RCondition` enum, condition macros.
+- `miniextendr-api/src/condition.rs` — `RCondition` struct, `ConditionKind`, condition macros.
 - `miniextendr-api/src/unwind_protect.rs` — `with_r_unwind_protect`,
   `with_r_unwind_protect_shim`.
 

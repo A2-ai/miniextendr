@@ -1,7 +1,7 @@
 //! Cross class-system condition fixtures.
 //!
 //! Each class system (R6, S3, S4, S7, Env, Vctrs) gets a small struct whose
-//! methods raise every `RCondition` variant — bare and with a custom class. The
+//! methods raise every `RCondition` kind — bare and with a custom class. The
 //! matrix exercises the per-class-system R wrapper shape (active bindings,
 //! setMethod, `self`-default arg, S7 `tryCatch(x@.ptr)` lambda, vctrs S3
 //! `UseMethod` dispatch, ...) which all dispatch through

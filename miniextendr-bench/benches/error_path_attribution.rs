@@ -72,23 +72,22 @@ fn l2_panic_to_condition(bencher: divan::Bencher) {
 }
 
 // ---------------------------------------------------------------------------
-// L3: with_r_unwind_protect catching an RCondition::Error — the user-visible
+// L3: with_r_unwind_protect catching an error RCondition — the user-visible
 // path via the `error!()` macro.
 // ---------------------------------------------------------------------------
 
 #[divan::bench]
 fn l3_rcondition_error(bencher: divan::Bencher) {
-    use miniextendr_api::condition::{ConditionCall, RCondition};
+    use miniextendr_api::condition::{ConditionKind, RCondition};
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     bencher.bench_local(|| {
         let out = with_r_unwind_protect(
             || -> SEXP {
-                std::panic::panic_any(RCondition::Error {
+                std::panic::panic_any(RCondition {
+                    kind: ConditionKind::Error,
                     message: "oops".to_string(),
-                    class: vec![],
-                    data: None,
-                    call: ConditionCall::Inherit,
+                    ..Default::default()
                 });
             },
             None,
@@ -105,17 +104,17 @@ fn l3_rcondition_error(bencher: divan::Bencher) {
 
 #[divan::bench]
 fn l3b_rcondition_error_classed(bencher: divan::Bencher) {
-    use miniextendr_api::condition::{ConditionCall, RCondition};
+    use miniextendr_api::condition::{ConditionKind, RCondition};
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(|_| {}));
     bencher.bench_local(|| {
         let out = with_r_unwind_protect(
             || -> SEXP {
-                std::panic::panic_any(RCondition::Error {
+                std::panic::panic_any(RCondition {
+                    kind: ConditionKind::Error,
                     message: "oops".to_string(),
                     class: vec!["my_class".to_string()],
-                    data: None,
-                    call: ConditionCall::Inherit,
+                    ..Default::default()
                 });
             },
             None,

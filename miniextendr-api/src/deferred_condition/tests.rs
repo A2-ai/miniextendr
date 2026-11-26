@@ -5,21 +5,19 @@
 //! by `tests/deferred_conditions.rs`.
 
 use super::*;
-use crate::condition::ConditionCall;
 
 fn warning(message: &str) -> RCondition {
-    RCondition::Warning {
+    RCondition {
+        kind: ConditionKind::Warning,
         message: message.to_string(),
-        class: Vec::new(),
-        data: None,
-        call: ConditionCall::Inherit,
+        ..Default::default()
     }
 }
 
 fn messages(queued: Vec<RCondition>) -> Vec<String> {
     queued
         .into_iter()
-        .map(|condition| condition.message().to_string())
+        .map(|condition| condition.message)
         .collect()
 }
 

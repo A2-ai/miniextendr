@@ -44,7 +44,7 @@ wrapper's own argument checks from a body (see
 
 ## How it works
 
-Each macro calls `std::panic::panic_any(RCondition::...)`. The panic is caught by
+Each macro calls `std::panic::panic_any(RCondition { kind, .. })`. The panic is caught by
 `with_r_unwind_protect` before Rust destructors have unwound, which recognises
 the `RCondition` payload and converts it to a tagged SEXP (5-element list:
 `error`, `kind`, `class`, `call`, `data`). The generated R wrapper reads the
@@ -1050,8 +1050,8 @@ impl Model {
   `serde_error_shape!` declared for the type in this crate, else the type's
   `RConditionData` impl, else its serde shape with the `<crate>_error`
   family class (`CARGO_CRATE_NAME` of the crate that invokes it). The result
-  is an `RCondition::Error` with that message, classes, fields and call
-  choice.
+  is an error `RCondition` (`kind: ConditionKind::Error`) with that
+  message, classes, fields and call choice.
 - It takes a reference to the error, of a type that is `Serialize +
   Display`; both are checked. Pass one reference: an error you hold as
   `&E` goes in as it is, `serde_condition!(e)`. `&e` would be a `&&E`,
@@ -1070,15 +1070,28 @@ it as `Err(RCondition)` instead of letting it reach R. Use it when a body turns
 another function's failure into its own result: a refusal that names the
 cause, a fallback, a retry.
 
+An `RCondition` is a struct with public fields: `kind` (a `ConditionKind`:
+`Error`, `Warning`, `Message`, `Condition` or `Conversion`, the argument
+error), `message`, `class` (the user classes, most specific first), `data`
+(the `e$<name>` fields) and `call` (a `ConditionCall`). Read them directly,
+or match on them. `RCondition::default()` is an error with an empty message,
+no classes, no fields and the captured call, so a literal names only what
+differs and ends in `..Default::default()`.
+
 ```rust
-use miniextendr_api::condition::{RCondition, catch_condition};
+use miniextendr_api::condition::{ConditionKind, RCondition, catch_condition};
 use miniextendr_api::{miniextendr, rust_error};
 
 #[miniextendr]
 pub fn restore(path: &str) -> Restored {
     match catch_condition(|| rebuild(path)) {
         Ok(object) => object,
-        Err(RCondition::Error { message, class, .. }) => rust_error!(
+        Err(RCondition {
+            kind: ConditionKind::Error,
+            message,
+            class,
+            ..
+        }) => rust_error!(
             class = "pkg_error_restore",
             data = ("cause_class", class.join(" ")),
             "cannot restore {path}: {message}"
@@ -1090,8 +1103,8 @@ pub fn restore(path: &str) -> Restored {
 
 | Raised inside `f` | `catch_condition` |
 |---|---|
-| `error!` / `rust_error!`, `warning!`, `message!`, `condition!`, `RCondition::raise()` | `Err`, with the kind (the variant), classes, `data` and call choice |
-| an argument or conversion error (`arg_error!`, `RCondition::arg_error`), an `ExternalPtr` type error | `Err` (`RCondition::Conversion` / `Error`) |
+| `error!` / `rust_error!`, `warning!`, `message!`, `condition!`, `RCondition::raise()` | `Err`, with the kind, classes, `data` and call choice |
+| an argument or conversion error (`arg_error!`, `RCondition::arg_error`), an `ExternalPtr` type error | `Err` (kind `ConditionKind::Conversion` / `Error`) |
 | an R error, interrupt or other R exit crossing the Rust frames (R code run through `eval_with_handlers`, `with_r_unwind_protect`, ...) | resumed: R carries on to where it was jumping |
 | a plain `panic!()` or any other payload | resumed: it becomes an R error at the boundary, with its source location |
 
@@ -1191,7 +1204,7 @@ built like the raised condition but never signalled. A cause can have its own
 parent, so the chain is `e$parent$parent` and so on.
 
 ```rust
-use miniextendr_api::condition::{catch_condition, ConditionCall, RCondition};
+use miniextendr_api::condition::{catch_condition, RCondition};
 use miniextendr_api::{error, miniextendr};
 
 fn parse_line(line: &str) -> i32 {
@@ -1204,11 +1217,10 @@ fn parse_line(line: &str) -> i32 {
 pub fn load_setting(line: &str) -> i32 {
     match catch_condition(|| parse_line(line)) {
         Ok(value) => value,
-        Err(cause) => RCondition::Error {
+        Err(cause) => RCondition {
             message: "could not load the setting".into(),
             class: vec!["pkg_error_load".into()],
-            data: None,
-            call: ConditionCall::Inherit,
+            ..Default::default()
         }
         .with_parent(cause)
         .raise(),

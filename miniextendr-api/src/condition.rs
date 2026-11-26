@@ -2,7 +2,7 @@
 //!
 //! This module provides two things:
 //!
-//! 1. **[`enum@RCondition`] enum** — the internal panic payload used by `error!()`,
+//! 1. **[`struct@RCondition`] struct** — the internal panic payload used by `error!()`,
 //!    `warning!()`, `message!()`, and `condition!()` macros. Caught by
 //!    [`crate::unwind_protect::with_r_unwind_protect`] before the generic
 //!    panic→error path, then forwarded to R as a structured condition with
@@ -223,7 +223,46 @@ impl From<crate::RCallValue> for ConditionCall {
 
 // endregion
 
-// region: RCondition enum — structured condition payload
+// region: RCondition — structured condition payload
+
+/// Which R signal an [`RCondition`](struct@RCondition) raises: one kind of the tagged condition
+/// value ([`crate::error_value::kind`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ConditionKind {
+    /// An R error (`kind = "error"`): raised by `error!(...)`, and by the
+    /// `Result<T, E>` Err arm once reconstructed across a package boundary.
+    #[default]
+    Error,
+    /// An R warning (`kind = "warning"`): raised by `warning!(...)`.
+    Warning,
+    /// An R message (`kind = "message"`): raised by `message!(...)`, and
+    /// queued by [`crate::defer_message()`]. A message never reports a call,
+    /// whatever the condition's `call` says.
+    Message,
+    /// A plain R condition (`kind = "condition"`): raised by
+    /// `condition!(...)`.
+    Condition,
+    /// An argument error (`kind = "conversion"`): raised by
+    /// [`crate::arg_error!`] / [`ArgError::raise`] (built by
+    /// [`RCondition::arg_error`]), and a failed argument conversion once
+    /// reconstructed across a package boundary.
+    Conversion,
+}
+
+impl ConditionKind {
+    /// The kind as the tagged condition value writes it, one of
+    /// [`crate::error_value::kind`].
+    pub fn as_str(self) -> &'static str {
+        use crate::error_value::kind;
+        match self {
+            ConditionKind::Error => kind::ERROR,
+            ConditionKind::Warning => kind::WARNING,
+            ConditionKind::Message => kind::MESSAGE,
+            ConditionKind::Condition => kind::CONDITION,
+            ConditionKind::Conversion => kind::CONVERSION,
+        }
+    }
+}
 
 /// Owned payload for structured R conditions.
 ///
@@ -240,75 +279,35 @@ impl From<crate::RCallValue> for ConditionCall {
 /// ([`crate::deferred_condition`]) queues the same payloads instead of
 /// panicking, so the call still returns its value.
 ///
-/// Every variant carries the same four parts: the message, the user classes
-/// (prepended to the `rust_*` layering, empty for none), the optional `data`
-/// fields and the [`ConditionCall`] choice. All four are owned and `Send`, so
-/// the payload can travel through `panic_any`. Each variant is one kind of the
-/// tagged condition value ([`crate::error_value::kind`]).
-#[derive(Debug, Clone)]
-pub enum RCondition {
-    /// Raised by `error!(...)` / `error!(class = "...", ...)`, and by the
-    /// `Result<T, E>` Err arm once reconstructed across a package boundary.
-    Error {
-        /// Human-readable condition message.
-        message: String,
-        /// User classes, most specific first, before the framework's classes.
-        class: Vec<String>,
-        /// Named fields attached to the R condition.
-        data: Option<ConditionData>,
-        /// Call attribution policy; messages always omit the call.
-        call: ConditionCall,
-    },
-    /// Raised by `warning!(...)` / `warning!(class = "...", ...)`.
-    Warning {
-        /// Human-readable condition message.
-        message: String,
-        /// User classes, most specific first, before the framework's classes.
-        class: Vec<String>,
-        /// Named fields attached to the R condition.
-        data: Option<ConditionData>,
-        /// Call attribution policy; messages always omit the call.
-        call: ConditionCall,
-    },
-    /// Raised by `message!(...)`, and queued by [`crate::defer_message()`]. Only
-    /// the typed-payload path fills `class` (the macro has no `class =` form);
-    /// the R helper layers it in front of `rust_message` like the other kinds.
-    /// A message never reports a call, whatever `call` says.
-    Message {
-        /// Human-readable condition message.
-        message: String,
-        /// User classes, most specific first, before the framework's classes.
-        class: Vec<String>,
-        /// Named fields attached to the R condition.
-        data: Option<ConditionData>,
-        /// Call attribution policy; messages always omit the call.
-        call: ConditionCall,
-    },
-    /// Raised by `condition!(...)` / `condition!(class = "...", ...)`.
-    Condition {
-        /// Human-readable condition message.
-        message: String,
-        /// User classes, most specific first, before the framework's classes.
-        class: Vec<String>,
-        /// Named fields attached to the R condition.
-        data: Option<ConditionData>,
-        /// Call attribution policy; messages always omit the call.
-        call: ConditionCall,
-    },
-    /// An argument error, `kind = "conversion"`: raised by
-    /// [`crate::arg_error!`] / [`ArgError::raise`] (built by
-    /// [`RCondition::arg_error`]), and a failed argument conversion once
-    /// reconstructed across a package boundary.
-    Conversion {
-        /// Human-readable condition message.
-        message: String,
-        /// User classes, most specific first, before the framework's classes.
-        class: Vec<String>,
-        /// Named fields attached to the R condition.
-        data: Option<ConditionData>,
-        /// Call attribution policy; messages always omit the call.
-        call: ConditionCall,
-    },
+/// The [`kind`](Self::kind) chooses the signal; the other parts are the
+/// message, the user classes (prepended to the `rust_*` layering, empty for
+/// none), the optional `data` fields and the [`ConditionCall`] choice. All
+/// are owned and `Send`, so the payload can travel through `panic_any`.
+///
+/// The default is an error with an empty message, no classes, no fields and
+/// the captured call, so a literal names only what differs:
+///
+/// ```ignore
+/// RCondition {
+///     kind: ConditionKind::Warning,
+///     message: "the fit did not converge".into(),
+///     class: vec!["pkg_warning_convergence".into()],
+///     ..Default::default()
+/// }
+/// .defer();
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct RCondition {
+    /// The R signal: error, warning, message, condition or argument error.
+    pub kind: ConditionKind,
+    /// Human-readable condition message, as `conditionMessage()` reads it.
+    pub message: String,
+    /// User classes, most specific first, before the framework's classes.
+    pub class: Vec<String>,
+    /// Named fields attached to the R condition, read as `e$<name>`.
+    pub data: Option<ConditionData>,
+    /// Which call the condition reports; a message never reports one.
+    pub call: ConditionCall,
 }
 
 impl RCondition {
@@ -351,7 +350,8 @@ impl RCondition {
     /// panics here, as in a generated `Err` arm.
     #[track_caller]
     pub fn from_data<E: RConditionData + ?Sized>(e: &E) -> RCondition {
-        RCondition::Error {
+        RCondition {
+            kind: ConditionKind::Error,
             message: e.message(),
             class: e.class(),
             data: check_err_fields(e.data(), e.__mx_keeps_internal_fields()),
@@ -365,63 +365,15 @@ impl RCondition {
     /// from.
     #[doc(hidden)]
     pub fn into_parts(self) -> (&'static str, ErrParts) {
-        use crate::error_value::kind;
-        let (kind, message, class, data, call) = match self {
-            RCondition::Error {
-                message,
-                class,
-                data,
-                call,
-            } => (kind::ERROR, message, class, data, call),
-            RCondition::Warning {
-                message,
-                class,
-                data,
-                call,
-            } => (kind::WARNING, message, class, data, call),
-            RCondition::Message {
-                message,
-                class,
-                data,
-                call,
-            } => (kind::MESSAGE, message, class, data, call),
-            RCondition::Condition {
-                message,
-                class,
-                data,
-                call,
-            } => (kind::CONDITION, message, class, data, call),
-            RCondition::Conversion {
-                message,
-                class,
-                data,
-                call,
-            } => (kind::CONVERSION, message, class, data, call),
-        };
         (
-            kind,
+            self.kind.as_str(),
             ErrParts {
-                message,
-                class,
-                data,
-                call,
+                message: self.message,
+                class: self.class,
+                data: self.data,
+                call: self.call,
             },
         )
-    }
-
-    /// The condition message, as `conditionMessage()` would read it in R.
-    ///
-    /// Use it on a condition [`catch_condition`] caught or
-    /// [`capture`](crate::deferred_condition::capture) collected, for example
-    /// to put a cause's text into a new message.
-    pub fn message(&self) -> &str {
-        match self {
-            RCondition::Error { message, .. }
-            | RCondition::Warning { message, .. }
-            | RCondition::Message { message, .. }
-            | RCondition::Condition { message, .. }
-            | RCondition::Conversion { message, .. } => message,
-        }
     }
 
     /// This condition with `parent` as its cause, as `rlang::abort(parent = )`
@@ -443,11 +395,10 @@ impl RCondition {
     /// ```ignore
     /// match catch_condition(|| load_config(path)) {
     ///     Ok(value) => value,
-    ///     Err(cause) => RCondition::Error {
-    ///         message: format!("could not load the model: {}", cause.message()),
+    ///     Err(cause) => RCondition {
+    ///         message: format!("could not load the model: {}", cause.message),
     ///         class: vec!["pkg_error_load".into()],
-    ///         data: None,
-    ///         call: ConditionCall::Inherit,
+    ///         ..Default::default()
     ///     }
     ///     .with_parent(cause)
     ///     .raise(),
@@ -455,14 +406,7 @@ impl RCondition {
     /// ```
     pub fn with_parent(mut self, parent: RCondition) -> Self {
         let encoded = parent.into_tagged_rvalue();
-        let data = match &mut self {
-            RCondition::Error { data, .. }
-            | RCondition::Warning { data, .. }
-            | RCondition::Message { data, .. }
-            | RCondition::Condition { data, .. }
-            | RCondition::Conversion { data, .. } => data,
-        };
-        let fields = data.get_or_insert_with(Vec::new);
+        let fields = self.data.get_or_insert_with(Vec::new);
         fields.retain(|(name, _)| name != PARENT_FIELD);
         fields.push((PARENT_FIELD.to_owned(), encoded));
         self
@@ -476,29 +420,6 @@ impl RCondition {
         tagged_rvalue(kind, parts)
     }
 
-    /// Which call the condition reports when R raises it: see
-    /// [`ConditionCall`].
-    pub fn call(&self) -> ConditionCall {
-        match self {
-            RCondition::Error { call, .. }
-            | RCondition::Warning { call, .. }
-            | RCondition::Message { call, .. }
-            | RCondition::Condition { call, .. }
-            | RCondition::Conversion { call, .. } => call.clone(),
-        }
-    }
-
-    /// The user classes and the fields, whatever the variant.
-    fn class_and_data(&self) -> (&[String], &Option<ConditionData>) {
-        match self {
-            RCondition::Error { class, data, .. }
-            | RCondition::Warning { class, data, .. }
-            | RCondition::Message { class, data, .. }
-            | RCondition::Condition { class, data, .. }
-            | RCondition::Conversion { class, data, .. } => (class, data),
-        }
-    }
-
     /// The payload of [`crate::arg_error!`] and [`ArgError::raise`]: the
     /// argument error of parameter `param` (its R name) with `message`.
     ///
@@ -508,7 +429,8 @@ impl RCondition {
     /// argument checks raise (`.miniextendr_arg_error`).
     #[doc(hidden)]
     pub fn arg_error(param: impl Into<String>, message: String, call: ConditionCall) -> Self {
-        RCondition::Conversion {
+        RCondition {
+            kind: ConditionKind::Conversion,
             message,
             class: vec![CONVERSION_ERROR_CLASS_MARKER.to_string()],
             data: Some(vec![(
@@ -581,13 +503,13 @@ pub(crate) fn crate_conversion_error_class() -> &'static [&'static str] {
 ///     Ok(object) => object,
 ///     Err(cause) => error!(
 ///         class = "pkg_error_load",
-///         data = ("cause", cause.message().to_string()),
-///         "cannot load the model: {}", cause.message()
+///         data = ("cause", cause.message.clone()),
+///         "cannot load the model: {}", cause.message
 ///     ),
 /// }
 /// ```
 ///
-/// **Caught:** every [`RCondition`](enum@RCondition) payload, with its kind, classes, data
+/// **Caught:** every [`RCondition`](struct@RCondition) payload, with its kind, classes, data
 /// and call choice: [`error!`](crate::error!) / [`rust_error!`](crate::rust_error!),
 /// [`warning!`](crate::warning!), [`message!`](crate::message!),
 /// [`condition!`](crate::condition!), [`RCondition::raise`], the argument and
@@ -1043,7 +965,8 @@ macro_rules! error {
     ($($t:tt)*) => {{
         let (__mx_call, __mx_class, __mx_data, __mx_message) =
             $crate::__mx_condition_parts!($($t)*);
-        ::std::panic::panic_any($crate::condition::RCondition::Error {
+        ::std::panic::panic_any($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Error,
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
@@ -1144,7 +1067,8 @@ macro_rules! warning {
     ($($t:tt)*) => {{
         let (__mx_call, __mx_class, __mx_data, __mx_message) =
             $crate::__mx_condition_parts!($($t)*);
-        ::std::panic::panic_any($crate::condition::RCondition::Warning {
+        ::std::panic::panic_any($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Warning,
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
@@ -1200,7 +1124,8 @@ macro_rules! message {
         )
     };
     (data = $data:tt, $($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Message {
+        ::std::panic::panic_any($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Message,
             message: ::std::format!($($arg)*),
             class: ::std::vec::Vec::new(),
             data: $crate::__mx_condition_data!($data),
@@ -1208,7 +1133,8 @@ macro_rules! message {
         })
     };
     ($($arg:tt)*) => {
-        ::std::panic::panic_any($crate::condition::RCondition::Message {
+        ::std::panic::panic_any($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Message,
             message: ::std::format!($($arg)*),
             class: ::std::vec::Vec::new(),
             data: ::std::option::Option::None,
@@ -1268,7 +1194,8 @@ macro_rules! condition {
     ($($t:tt)*) => {{
         let (__mx_call, __mx_class, __mx_data, __mx_message) =
             $crate::__mx_condition_parts!($($t)*);
-        ::std::panic::panic_any($crate::condition::RCondition::Condition {
+        ::std::panic::panic_any($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Condition,
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
@@ -1766,7 +1693,7 @@ pub trait RConditionData {
     /// field the failed elements of a container's conversion (`e$errors`,
     /// [`IntoRError::Elements`](crate::into_r_error::IntoRError::Elements)).
     /// Every other reserved name is refused ([`check_condition_data`]). True
-    /// for an [`RCondition`](enum@RCondition), an
+    /// for an [`RCondition`](struct@RCondition), an
     /// [`IntoRError`](crate::into_r_error::IntoRError) and an [`RError`]
     /// converted from either.
     #[doc(hidden)]
@@ -1805,7 +1732,7 @@ fn check_err_field(name: String, keeps_internal_fields: bool) -> String {
 /// `#[derive(RCondition)]`: [`RConditionData`] generated from a type's shape
 /// (`#[condition(class = "…")]`, `#[condition(message = "…")]`, the
 /// `rename` / `skip` / `debug` field options) and `From<T>` for
-/// [`RCondition`](enum@RCondition) with the declared kind
+/// [`RCondition`](struct@RCondition) with the declared kind
 /// (`#[condition(kind = …)]`, default `error`).
 #[doc(inline)]
 pub use miniextendr_macros::RCondition;
@@ -1847,7 +1774,7 @@ pub struct RError {
     data: ConditionData,
     call: ConditionCall,
     argument_message: Option<String>,
-    /// Converted from an [`RCondition`](enum@RCondition) or an
+    /// Converted from an [`RCondition`](struct@RCondition) or an
     /// [`IntoRError`](crate::into_r_error::IntoRError): a `.mx_parent` field
     /// is the cause it carried, a `.mx_errors` field its failed elements
     /// ([`RConditionData::__mx_keeps_internal_fields`]).
@@ -1985,10 +1912,10 @@ impl RConditionData for RError {
     }
 }
 
-/// An [`RCondition`](enum@RCondition) returned as an `Err` (#2217): from a
+/// An [`RCondition`](struct@RCondition) returned as an `Err` (#2217): from a
 /// `#[miniextendr]` function or method returning `Result<T, RCondition>`.
 /// Its message, classes, fields and call choice reach R as given. Like any `Err`, it is an
-/// R error whatever its variant: the kind is read only where the condition is
+/// R error whatever its kind: the kind is read only where the condition is
 /// raised or deferred ([`RCondition::raise`], [`RCondition::defer`]). A cause
 /// attached with [`RCondition::with_parent`], as a caught refusal of a
 /// restored object carries one, stays its `e$parent`, also through the
@@ -2006,16 +1933,16 @@ impl RConditionData for RError {
 /// ```
 impl RConditionData for RCondition {
     fn message(&self) -> String {
-        RCondition::message(self).to_owned()
+        self.message.clone()
     }
     fn class(&self) -> Vec<String> {
-        self.class_and_data().0.to_vec()
+        self.class.clone()
     }
     fn data(&self) -> Option<ConditionData> {
-        self.class_and_data().1.clone()
+        self.data.clone()
     }
     fn call(&self) -> ConditionCall {
-        RCondition::call(self)
+        self.call.clone()
     }
     /// A `.mx_parent` field is the cause [`RCondition::with_parent`]
     /// attached (a refusal [`catch_condition`] caught carries one), a
@@ -3417,7 +3344,7 @@ macro_rules! serde_error_shape {
     };
 }
 
-/// The [`RCondition`](enum@RCondition) an error type that is
+/// The [`RCondition`](struct@RCondition) an error type that is
 /// `Serialize + Display` gives as a `#[miniextendr]` function's `Err`, for
 /// code that is not an entry point (#2217): a helper returning
 /// `Result<T, RCondition>`, a body mixing it with conditions
@@ -3428,7 +3355,7 @@ macro_rules! serde_error_shape {
 /// family class: the shape [`serde_error_shape!`]
 /// declared for the type in this crate, else the type's [`RConditionData`]
 /// impl, else its serde shape with the `<crate>_error` family class. The
-/// condition is an error ([`RCondition::Error`]) with the classes, message,
+/// condition is an error ([`ConditionKind::Error`]) with the classes, message,
 /// fields and call choice an entry point returning `Err(err)` would raise.
 ///
 /// ```ignore
@@ -3471,7 +3398,8 @@ macro_rules! serde_condition {
                     ::core::concat!(::core::env!("CARGO_CRATE_NAME"), "_error"),
                     crate::__MiniextendrInitMarker
                 );
-                $crate::condition::RCondition::Error {
+                $crate::condition::RCondition {
+                    kind: $crate::condition::ConditionKind::Error,
                     message: __mx_parts.message,
                     class: __mx_parts.class,
                     data: __mx_parts.data,
@@ -3623,25 +3551,23 @@ macro_rules! __mx_declared_serde_shape {
 // region: from_tagged_sexp + repanic_if_rust_error — shim re-panic helpers
 
 impl RCondition {
-    /// Reconstruct an [`RCondition::Error`] from a tagged SEXP produced by
+    /// Reconstruct an [`RCondition`](struct@RCondition) from a tagged SEXP produced by
     /// [`crate::error_value::make_rust_condition_value`].
     ///
     /// Returns `Some(RCondition)` when `sexp` has class `"rust_condition_value"` AND
     /// the `"__rust_condition__"` attribute is `TRUE`. Returns `None` for all other
     /// SEXPs (normal return values, `R_NilValue`, etc.).
     ///
-    /// Reconstructs the matching variant for each kind: `"error"`/`"panic"`/
-    /// `"result_err"`/`"none_err"`/`"other_rust_error"` →
-    /// [`RCondition::Error`] (class, message, data and a
-    /// [`ConditionCall::None`] or [`ConditionCall::Given`] choice kept; the
-    /// kind itself is not carried by the variant);
-    /// `"conversion"` → [`RCondition::Conversion`], so an argument error keeps
-    /// `kind = "conversion"` across a package boundary (and an
-    /// [`crate::arg_error!`] its class marker, which the consumer's wrapper
-    /// resolves); `"warning"` → [`RCondition::Warning`]; `"message"` →
-    /// [`RCondition::Message`]; `"condition"` → [`RCondition::Condition`].
-    /// Unknown kinds degrade to [`RCondition::Error`] with the kind string
-    /// prefixed to the message.
+    /// Reconstructs the matching [`ConditionKind`] for each kind, with class,
+    /// message, data and a [`ConditionCall::None`] or [`ConditionCall::Given`]
+    /// choice kept: `"error"`/`"panic"`/`"result_err"`/`"none_err"`/
+    /// `"other_rust_error"` → [`ConditionKind::Error`] (the tagged kind
+    /// itself is not kept); `"conversion"` → [`ConditionKind::Conversion`],
+    /// so an argument error keeps `kind = "conversion"` across a package
+    /// boundary (and an [`crate::arg_error!`] its class marker, which the
+    /// consumer's wrapper resolves); `"warning"`, `"message"` and
+    /// `"condition"` → the kind of that name. Unknown kinds degrade to
+    /// [`ConditionKind::Error`] with the kind string prefixed to the message.
     ///
     /// # Safety
     ///
@@ -3786,52 +3712,26 @@ impl RCondition {
             }
         };
 
-        let cond = match kind {
+        let (kind, message) = match kind {
             kind_const::ERROR
             | kind_const::PANIC
             | kind_const::RESULT_ERR
             | kind_const::NONE_ERR
-            | kind_const::OTHER_RUST_ERROR => RCondition::Error {
-                message: msg,
-                class,
-                data,
-                call,
-            },
-            kind_const::CONVERSION => RCondition::Conversion {
-                message: msg,
-                class,
-                data,
-                call,
-            },
-            kind_const::WARNING => RCondition::Warning {
-                message: msg,
-                class,
-                data,
-                call,
-            },
-            kind_const::MESSAGE => RCondition::Message {
-                message: msg,
-                class,
-                data,
-                call,
-            },
-            kind_const::CONDITION => RCondition::Condition {
-                message: msg,
-                class,
-                data,
-                call,
-            },
-            other => {
-                // Unknown kind — degrade to error
-                RCondition::Error {
-                    message: format!("[{other}] {msg}"),
-                    class,
-                    data,
-                    call,
-                }
-            }
+            | kind_const::OTHER_RUST_ERROR => (ConditionKind::Error, msg),
+            kind_const::CONVERSION => (ConditionKind::Conversion, msg),
+            kind_const::WARNING => (ConditionKind::Warning, msg),
+            kind_const::MESSAGE => (ConditionKind::Message, msg),
+            kind_const::CONDITION => (ConditionKind::Condition, msg),
+            // Unknown kind: degrade to an error.
+            other => (ConditionKind::Error, format!("[{other}] {msg}")),
         };
-        Some(cond)
+        Some(RCondition {
+            kind,
+            message,
+            class,
+            data,
+            call,
+        })
     }
 }
 
@@ -3844,7 +3744,7 @@ fn is_no_call_marker(call: crate::SEXP) -> bool {
 }
 
 /// Inspect a SEXP returned by a trait-ABI vtable shim and, if it is a tagged
-/// error value, re-panic with the reconstructed [`enum@RCondition`].
+/// error value, re-panic with the reconstructed [`struct@RCondition`].
 ///
 /// This is the "re-panic at the View boundary" step of Approach 1 from the
 /// issue-345 plan. The caller (a generated View method wrapper) does:
@@ -3856,7 +3756,7 @@ fn is_no_call_marker(call: crate::SEXP) -> bool {
 /// ```
 ///
 /// When `sexp` is a tagged error value:
-/// - `RCondition::Error` / `RCondition::Warning` / etc. → `panic_any!(cond)`.
+/// - any kind → `panic_any!(cond)`.
 ///   The outer `with_r_unwind_protect` in the consumer's C entry point will
 ///   catch this and produce a tagged SEXP for the consumer's R wrapper.
 ///

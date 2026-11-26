@@ -7,7 +7,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::condition::{RCondition, RConditionData};
+use miniextendr_api::condition::{ConditionKind, RCondition, RConditionData};
 use miniextendr_api::expression::RCall;
 use miniextendr_api::externalptr::{Computed, RSidecar};
 use miniextendr_api::gc_protect::ProtectScope;
@@ -162,7 +162,8 @@ fn result_getters_raise_or_read_null() {
         let owner = ExternalPtr::new(gauge(LIMIT + 1));
         let x = owner.as_sexp();
         match read(x, "checked") {
-            Err(RCondition::Error {
+            Err(RCondition {
+                kind: ConditionKind::Error,
                 message,
                 class,
                 data,
@@ -215,7 +216,11 @@ fn a_restored_pointer_is_refused() {
             .protect(RCall::new("unserialize").arg(saved).eval_base().unwrap())
             .get();
         match read(back, "doubled") {
-            Err(RCondition::Error { class, .. }) => {
+            Err(RCondition {
+                kind: ConditionKind::Error,
+                class,
+                ..
+            }) => {
                 assert!(
                     class.iter().any(|c| c == "miniextendr_restored_no_value"),
                     "{class:?}"

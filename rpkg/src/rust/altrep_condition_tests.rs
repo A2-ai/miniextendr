@@ -276,7 +276,7 @@ pub fn altrep_condition_on_elt(n: i32, message: &str) -> SEXP {
 // region: DataErrorAltrep — error!(data = ...) from elt(), guard = RUnwind (issue #996 path 2)
 //
 // `with_r_unwind_protect_sourced` (the ALTREP `RUnwind` guard path) routes
-// `RCondition::Error` through `raise_rust_condition_via_stop`; there is no R
+// an error `RCondition` through `raise_rust_condition_via_stop`; there is no R
 // wrapper here to splice `.val$data`. Before #996 path 2 that path dropped the
 // `data =` fields entirely: class layering and message survived, `e$field_a`
 // did not. Since #1768 it hands the tagged value to the wrappers' own
