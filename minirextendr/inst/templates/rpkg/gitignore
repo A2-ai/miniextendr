@@ -13,6 +13,10 @@ src/*-wrappers.R
 # ship in the tarball from disk (.Rbuildignore does not exclude them).
 R/*-wrappers.R
 src/rust/wasm_registry.rs
+# The Cargo features those wrappers were generated with, written next to them
+# by tools/write-wrappers.R. Ships in the tarball from disk too: a release
+# tarball's configure builds with these features.
+tools/cargo-features
 
 # Built artifacts
 src/*.o

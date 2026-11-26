@@ -2089,6 +2089,13 @@ fi
 
 
 
+if test -z "${CARGO_FEATURES+x}" && test "$IS_TARBALL_INSTALL" = "true" \
+   && test -f "${srcdir}/tools/cargo-features"; then
+  CARGO_FEATURES=$(sed '/^#/d' "${srcdir}/tools/cargo-features" | tr -d ' \r\n')
+  { printf '%s\n' "$as_me:${as_lineno-$LINENO}: Cargo features recorded in the tarball: ${CARGO_FEATURES:-none}" >&5
+printf '%s\n' "$as_me: Cargo features recorded in the tarball: ${CARGO_FEATURES:-none}" >&6;}
+fi
+
 if test -z "${CARGO_FEATURES+x}"; then
   if test -f "${srcdir}/tools/detect-features.R"; then
     CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")

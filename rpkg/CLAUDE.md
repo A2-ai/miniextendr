@@ -72,5 +72,6 @@ Always `R CMD check` the **built tarball**, not the source dir — source-dir ch
 - `src/rust/` — Rust crate.
 - `src/rust/wasm_registry.rs` — **generated + gitignored** wasm32 snapshot (regenerated every install).
 - `tools/` — `Rscript`-invoked helpers for `configure`, plus `build-html-reference.R` (maintainer-only, `just doc-r`: one-page HTML manual from `man/` via `tools::pkg2HTML()`).
+- `tools/cargo-features` — **generated + gitignored**: the Cargo features `R/miniextendr-wrappers.R` was generated with (written by `tools/write-wrappers.R`), shipped in the tarball for its `configure` (#1664).
 - `tests/testthat/` — R-side tests.
 - `inst/vendor.tar.xz` — gitignored install-mode latch.
