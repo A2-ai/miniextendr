@@ -775,6 +775,9 @@ pub use visibility::{Invisible, Visible};
 /// argument read as `Option<T>`.
 pub mod nullable;
 pub use nullable::Nullable;
+/// An R function as a `#[miniextendr]` argument (`RFunction`).
+pub mod rfunction;
+pub use rfunction::RFunction;
 /// Condition-call markers (`Call` / `CallerCall`) for `#[miniextendr]` parameters.
 pub mod call_marker;
 pub use call_marker::{Call, CallerCall};

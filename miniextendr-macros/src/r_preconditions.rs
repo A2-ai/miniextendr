@@ -758,12 +758,15 @@ enum RTypeCheck {
     /// Nullable wrapper around an inner check: prepends `is.null(x) ||` to each assertion
     /// and adjusts messages to mention NULL. Around a scalar check a plain
     /// `NA` passes too (`is.null(x) || (is.logical(x) && length(x) == 1L &&
-    /// is.na(x)) ||`, [`plain_na_check`], #2305); around a vector check it
-    /// does not.
+    /// is.na(x)) ||`, [`plain_na_check`], #2305); around a vector or a
+    /// function check it does not ([`RTypeCheck::is_scalar`]).
     Nullable(Box<RTypeCheck>),
     /// List check: `is.list(x)` (1 assertion).
     /// Used for `HashMap`, `BTreeMap`, `NamedList`, `List`, `ListMut`.
     List,
+    /// Function check: `is.function(x)` (1 assertion), for `RFunction`
+    /// (#1947): a closure, builtin or special.
+    Function,
 }
 
 /// Build the R expression for the numeric type predicate.
@@ -922,7 +925,7 @@ impl RTypeCheck {
             )],
             RTypeCheck::Nullable(inner) => {
                 // An optional scalar reads a plain `NA` as `None` (#2305).
-                let plain_na = !inner.is_vector();
+                let plain_na = inner.is_scalar();
                 inner
                     .assertions(param)
                     .into_iter()
@@ -933,6 +936,11 @@ impl RTypeCheck {
                 param,
                 "must be a list",
                 format!("is.list({param})"),
+            )],
+            RTypeCheck::Function => vec![RAssertion::new(
+                param,
+                "must be a function",
+                format!("is.function({param})"),
             )],
         }
     }
@@ -956,8 +964,18 @@ impl RTypeCheck {
             | RTypeCheck::ScalarNonNeg
             | RTypeCheck::Scalar(_)
             | RTypeCheck::ScalarNumericOrText => false,
+            // One value, but no atomic one: see `is_scalar`.
+            RTypeCheck::Function => false,
             RTypeCheck::Nullable(inner) => inner.is_vector(),
         }
+    }
+
+    /// Whether the check admits one atomic value, which a plain `NA` can
+    /// stand for: under [`RTypeCheck::Nullable`] the guard lets a plain `NA`
+    /// through as `None` (#2305). Not a vector, and not a function, which no
+    /// `NA` stands for.
+    fn is_scalar(&self) -> bool {
+        !self.is_vector() && !matches!(self, RTypeCheck::Function)
     }
 
     /// What an argument of this type must be, in R terms: the `<expected>` of
@@ -1002,6 +1020,7 @@ impl RTypeCheck {
                 inner => format!("NULL or {inner}"),
             },
             RTypeCheck::List => "a list".into(),
+            RTypeCheck::Function => "a function".into(),
         }
     }
 }
@@ -1208,6 +1227,9 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
 
         // List (bare) → List
         "List" | "ListMut" => Some(RTypeCheck::List),
+
+        // An R function (#1947).
+        "RFunction" => Some(RTypeCheck::Function),
 
         // Skip types: SEXP, Dots, Missing, ExternalPtr, RLogical, etc.
         // `LazyDots` is `...`, passed as the wrapper's frame (#1892).

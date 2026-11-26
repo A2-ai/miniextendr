@@ -91,6 +91,7 @@ pub(crate) const BASE_CALLEES: &[&str] = &[
     "is.double",
     "is.environment",
     "is.factor",
+    "is.function",
     "is.integer",
     "is.list",
     "is.logical",

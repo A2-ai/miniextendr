@@ -767,6 +767,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | a `#[derive(TryFromSexp)]` newtype | the inner type's (`struct Dose(AsNumeric)`: `a single number`), declared by the derive; none for an inner type that has none |
 | a `match_arg` enum | none: a choice error is worded whole, as the R-side `match_arg` check words it (`'mode' should be one of "fast", "slow"`, `'mode' must not be NA`, `'mode' must be of length 1`, `'mode' must be NULL or a character vector`), with or without `#[miniextendr(match_arg)]` (#1767). As an `Either` arm it is named `one of "fast", "slow"` |
 | `HashMap`, `BTreeMap`, `NamedList`, `List` | `a list` |
+| `RFunction` | `a function` |
 | `Option<T>` (or `Nullable<T>`, which reads as `Option<T>`, #2294) | `NULL or <expected of T>` |
 | `i64`, `u64`, `isize`, `usize` under `strict` | `a single whole number` / `a single non-negative whole number` |
 | an opaque custom `TryFromSexp` type | none: `invalid '<p>' argument: <reason>` |
@@ -774,7 +775,7 @@ The `<expected>` part comes from the same type table as the R-side checks
 | Built-in error | `<reason>` |
 |----------------|------------|
 | type | `got character` (`expected integer, got character` without an `<expected>`) |
-| class (a `DataFrame` given a non-list, or a list that is not a data frame) | `got list` (`expected a data frame, got list` without an `<expected>`) |
+| class (a `DataFrame` given a non-list, or a list that is not a data frame; an `RFunction` given a non-function) | `got list` (`expected a data frame, got list` without an `<expected>`) |
 | length | `got length 2` (`expected length 1, got length 2` without an `<expected>`) |
 | NA | `NA is not allowed` |
 | invalid value | the value's own text, e.g. `non-numeric value(s): "BLQ" (element 2)` |

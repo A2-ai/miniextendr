@@ -125,3 +125,25 @@ test_that("raising from inside try_from_sexp keeps the class and call, not the a
   expect_null(e$rust_type)
   expect_identical(conditionCall(e), quote(miniextendr:::newtype_check_raised(mins)))
 })
+
+test_that("a check may refuse with a plain &str or String message (#1947)", {
+  expect_identical(miniextendr:::newtype_check_str_message("a"), "a")
+  e <- refused(miniextendr:::newtype_check_str_message(factor("a")))
+  expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+  expect_identical(
+    conditionMessage(e),
+    "'x' must be a single string: got a factor; pass as.character(x)"
+  )
+  expect_identical(e$kind, "conversion")
+  expect_identical(e$param, "x")
+  expect_identical(e$rust_type, "Label")
+
+  expect_identical(miniextendr:::newtype_check_string_message("b"), "b")
+  e <- refused(miniextendr:::newtype_check_string_message(""))
+  expect_identical(class(e), c("rust_error", "simpleError", "error", "condition"))
+  expect_identical(
+    conditionMessage(e),
+    "'x' must be a single string: got \"\"; give 1 to 64 characters"
+  )
+  expect_identical(e$rust_type, "Name")
+})
