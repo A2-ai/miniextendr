@@ -282,7 +282,7 @@ jobs:
   #     wasm32 cargo check of a scaffolded monorepo crate, no emcc) runs in
   #     the separate monorepo-wasm-check job above on every PR instead.
   #   - Phase 3: Node + webR session NODEFS-mounts /tmp/wasm-lib, installs
-  #              Imports from repo.r-wasm.org, drives library(miniextendr),
+  #              Imports from cran.r-universe.dev + repo.r-wasm.org, drives library(miniextendr),
   #              library(mxsmoke), and (main-push/dispatch) library(mxmono).
   # Mirrors tests/webr-smoke.sh end-to-end. CI's amd64 runners run the image
   # natively with plenty of disk; on Apple Silicon the amd64 image runs under

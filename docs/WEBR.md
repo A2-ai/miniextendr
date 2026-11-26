@@ -144,12 +144,14 @@ prints how to enter and remove it.
    canonical runner `tests/webr-node-smoke/smoke.mjs` (the same script CI
    tier 3 uses), which imports `file:///opt/webr/src/dist/webr.mjs` (see
    "Running a webR session in Node" below), NODEFS-mounts the wasm R lib
-   tree, installs the hard Imports from repo.r-wasm.org, and drives
+   tree, installs the hard Imports from cran.r-universe.dev and
+   repo.r-wasm.org (the higher version wins; repo.r-wasm.org can lag behind
+   CRAN), and drives
    `library(miniextendr)` + `packageVersion()`. With `SMOKE_TESTTHAT=1`
    (the local-smoke default; disable with `SMOKE_TESTTHAT=0`; restrict the
    files with `SMOKE_TESTTHAT_FILTER=<regex>`, see "Rosetta" below) it then runs
    an **informational testthat pass** (#1255): the runner installs testthat
-   from `repo.r-wasm.org`, NODEFS-mounts `rpkg/tests`, and runs the suite
+   from the same repositories, NODEFS-mounts `rpkg/tests`, and runs the suite
    against the wasm install (`load_package = "installed"`, with
    `MINIEXTENDR_STRESS` unset so the opt-in gctorture blocks, which have
    their own CI job, don't run under the much slower interpreter). Suite counts are
@@ -526,6 +528,40 @@ installed copy, recursing through pure-R umbrellas' `Depends`/`Imports`)
 and falls back to a curated known-compiled list for dependencies that are
 not installed locally. No `loadNamespace()`, no network.
 
+### S7 1.0.0 and webR's default repository (#2417)
+
+A package with S7 classes imports `S7 (>= 1.0.0)` (#2386). Examples are rpkg
+and whatever `minirextendr::use_s7()` writes. repo.r-wasm.org, webR's default
+repository, still serves S7 0.2.2 (`upstream/webr-580-repo-lags-cran-s7.md`),
+so in a session on default settings the package fails to load:
+
+```
+namespace 'S7' 0.2.2 is being loaded, but >= 1.0.0 is required
+```
+
+Name cran.r-universe.dev, which builds wasm binaries of current CRAN
+releases, ahead of webR's default repository:
+
+```r
+webr::install(pkgs, repos = c("https://cran.r-universe.dev", "https://repo.r-wasm.org"))
+```
+
+In JavaScript the same list goes in `webR.installPackages(pkgs, { repos: [...] })`, as
+`tests/webr-node-smoke/smoke.mjs` does.
+
+- **Order of installs.** `webr::install()` skips a package that is
+  already installed, without comparing versions, so S7 has to come from this
+  list before 0.2.2 lands in the library.
+- **Which version wins.** Where both repositories carry a package,
+  `available.packages()` keeps the later version.
+
+The floor stays at 1.0.0 on purpose. S7 objects take their format from the S7
+present when the package is *built*, which for a wasm binary is the build
+host's native copy (see "Two R installations" above). A package built with S7
+1.0.0 and loaded on 0.2.2 half-works: `S7::method()` on a generated generic
+fails with `Can't find property <S7_generic>@dispatch_args`. The floor turns
+that into a clean refusal to load. Keep the host's S7 at 1.0.0 or later too.
+
 ## CI
 
 `.github/workflows/webr.yml` runs three tiers plus two scaffold legs (#1259
@@ -559,7 +595,7 @@ install regenerates `wasm_registry.rs`), Phase 2 (emcc wasm install →
 `/tmp/wasm-lib/miniextendr`, the empirical validator for the side-module
 `RUSTFLAGS`), then **tier 3**, the Node + webR session
 (`tests/webr-node-smoke/smoke.mjs`) that NODEFS-mounts the wasm install,
-installs the package's Imports from `repo.r-wasm.org`, and drives
+installs the package's Imports from `cran.r-universe.dev` and `repo.r-wasm.org`, and drives
 `library(miniextendr)`. Tier 2 only proves the side-module *links*; tier 3
 is what proves it *loads* in a real webR runtime. On `workflow_dispatch`
 runs only, tier 3 also runs the informational testthat pass (#1255,

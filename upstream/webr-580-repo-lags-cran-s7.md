@@ -1,0 +1,24 @@
+# repo.r-wasm.org serves S7 0.2.2; packages with S7 classes need S7 >= 1.0.0
+
+- **Upstream:** no issue for S7 itself. Two r-wasm/webr issues describe how often the repository updates:
+  - [r-wasm/webr#580](https://github.com/r-wasm/webr/issues/580), 2025-10-03: the repository "follows CRAN, but is updated less frequently, around every 4 weeks", and requests to update specific packages are welcome.
+  - [#625](https://github.com/r-wasm/webr/issues/625), 2026-10-13: "We follow CRAN, but delayed", with cran.r-universe.dev suggested as "more current".
+  - [#602](https://github.com/r-wasm/webr/issues/602) shows a months-long lag on a dependency version.
+  - No request for S7 has been posted.
+- **Our issue:** #2417.
+- **Impact:**
+  - Since #2386, a miniextendr package with S7 classes imports `S7 (>= 1.0.0)`: rpkg, `tests/cross-package/producer.pkg`, and what `minirextendr::use_s7()` writes.
+  - In a webR session on default settings, S7 comes from repo.r-wasm.org at 0.2.2 and loading stops with "namespace 'S7' 0.2.2 is being loaded, but >= 1.0.0 is required".
+  - The webR CI smoke failed this way on every push to main from #2386 until #2415.
+- **Workaround:**
+  - Name cran.r-universe.dev ahead of the default repository: `webr::install(pkgs, repos = c("https://cran.r-universe.dev", "https://repo.r-wasm.org"))`, or `repos` in `webR.installPackages()`.
+  - That repository has S7 1.0.0 for R 4.6, built 2026-11-19.
+  - The smoke does this (`tests/webr-node-smoke/smoke.mjs`, `WASM_REPOS`), and `docs/WEBR.md` ("S7 1.0.0 and webR's default repository") explains it.
+  - We keep the floor at 1.0.0 rather than lowering it: a package built against S7 1.0.0 and loaded on 0.2.2 only half-works (#2417).
+- **Closes when:**
+  - repo.r-wasm.org publishes S7 >= 1.0.0 for the R version webR ships.
+  - Then remove this file, its index row, and the `docs/WEBR.md` paragraph. The smoke can keep both repositories.
+- **Last checked:** 2026-11-25.
+  - repo.r-wasm.org's `bin/emscripten/contrib/4.6/PACKAGES` lists S7 0.2.2, "Built: R 4.6.0; wasm32-unknown-emscripten; 2026-05-14".
+  - cran.r-universe.dev lists S7 1.0.0.
+  - S7 1.0.0 reached CRAN on 2026-11-19.
