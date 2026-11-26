@@ -14,6 +14,9 @@
 # being rebased onto), reports a clean merge, and records the path in
 # `$(git rev-parse --git-dir)/mx-regenerate`, a per-worktree list that
 # `just regenerate-merged` reads to rebuild the files from the merged sources.
+# The other side's change to the file is gone until that step runs, so the
+# driver says so on stderr, one line per path, which git shows during the
+# merge or rebase.
 #
 # Cargo.lock is merged as text. If that conflicts only because both sides
 # re-stamped the `source = "git+...#<sha>"` pins of the framework crates, the
@@ -29,12 +32,15 @@ set -euo pipefail
 base=$1 current=$2 other=$3 marker=$4 path=$5
 label_base=${6:-base} label_current=${7:-current} label_other=${8:-other}
 
-flag_for_regeneration() {
+# Record the path for `just regenerate-merged` and say on stderr what was
+# kept: <message> completes "mx-regen: kept ...".
+flag_for_regeneration() { # <message>
   local list
   list="$(git rev-parse --git-dir)/mx-regenerate"
   if ! grep -qxF -- "$path" "$list" 2>/dev/null; then
     printf '%s\n' "$path" >> "$list"
   fi
+  printf 'mx-regen: kept %s\n' "$1" >&2
 }
 
 # Replace the 40-hex commit pin of every git source line with a placeholder.
@@ -63,7 +69,7 @@ merge_cargo_lock() {
     # Only pins conflicted: redo the merge, resolving conflicts to our side.
     cp "$tmp/current" "$current"
     git merge-file --ours "$current" "$base" "$other"
-    flag_for_regeneration
+    flag_for_regeneration "the conflicting pins of $path from $label_current over $label_other; run \`just regenerate-merged\` to re-stamp them"
     exit 0
   fi
 
@@ -73,5 +79,5 @@ merge_cargo_lock() {
 
 case "$path" in
   Cargo.lock | */Cargo.lock) merge_cargo_lock ;;
-  *) flag_for_regeneration ;;
+  *) flag_for_regeneration "$path from $label_current, dropping the change from $label_other; run \`just regenerate-merged\` to rebuild it" ;;
 esac

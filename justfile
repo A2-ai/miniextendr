@@ -1470,7 +1470,8 @@ loc-compare:
 # gitignored, so it never merges and is not routed. The tracked `-merge`
 # stays for clones without the driver and for scaffolded packages, which
 # inherit rpkg/.gitattributes. Both the config and info/attributes are shared
-# by every worktree of this clone. Re-running replaces the managed block.
+# by every worktree of this clone. Re-running replaces the managed block. It
+# changes no rerere setting; it warns when rerere.enabled is true (#1896).
 # Install the mx-regen merge driver for regenerated files (this clone and its worktrees)
 [script("bash")]
 merge-drivers-install:
@@ -1498,6 +1499,16 @@ merge-drivers-install:
     } > "$attributes"
     echo "mx-regen merge driver installed (git config + $attributes)."
     echo "After a merge or rebase that used it, run: just regenerate-merged"
+    if [ "$(git config --bool rerere.enabled || true)" = true ]; then
+      {
+        echo "warning: rerere.enabled is true for this repository."
+        echo "  A Cargo.lock conflict the driver can't resolve stops with markers; rerere records"
+        echo "  your hand resolution and replays it when the same conflict comes back in a later"
+        echo "  rebase, unreviewed (staged without stopping under rerere.autoupdate)."
+        echo "  Git has no per-path switch. To turn it off for this clone and its worktrees:"
+        echo "    git config --local rerere.enabled false"
+      } >&2
+    fi
 
 # Rebuild the files the mx-regen merge driver kept unmerged. Reads the
 # per-worktree list $(git rev-parse --git-dir)/mx-regenerate and clears it
