@@ -2457,8 +2457,8 @@ unsafe {
             let data = s4_helpers::s4_get_slot(obj, "data")?; // Result<SEXP, REvalError>
         }
 
-        // Set a slot value
-        s4_helpers::s4_set_slot(obj, "label", new_value)?;
+        // A copy with the slot set; `obj` keeps its value
+        let relabelled = s4_helpers::s4_with_slot(obj, "label", new_value)?;
     }
 }
 ```
@@ -2469,9 +2469,16 @@ unsafe {
 | `s4_class_name(obj)` | Get the S4 class name as `Option<String>` |
 | `s4_has_slot(obj, name)` | Check if a slot exists |
 | `s4_get_slot(obj, name)` | Get a slot value as `Result<SEXP, REvalError>` |
-| `s4_set_slot(obj, name, value)` | Set a slot value; `Err(REvalError)` carries R's condition (an invalid value, say) |
+| `s4_with_slot(obj, name, value)` | A copy of `obj` with the slot set (`obj@name <- value`), as `Result<SEXP, REvalError>`; `obj` keeps its value, and `Err` carries R's condition (an invalid value, say) |
 
 All functions require the R main thread and operate on raw SEXP values.
+
+Inside a `#[miniextendr]` call, `s4_get_slot` and `s4_with_slot` evaluate with
+the caller's condition handlers: a warning from a `setIs()` relation's
+`coerce` function, which `slot<-` runs on a value of a related class, reaches
+`suppressWarnings()` and `tryCatch(warning = )` around the call. An R error
+still comes back as `Err`. Outside a boundary they evaluate isolated from the
+caller's handlers, as `RCall::eval` does.
 
 ---
 

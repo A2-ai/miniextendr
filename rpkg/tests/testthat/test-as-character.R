@@ -217,6 +217,93 @@ test_that("no_na refuses an NA only the conversion produces", {
 
 # endregion
 
+# region: the caller's condition handlers (#1840)
+
+# A method that warns, and another that sends a message: the caller's handlers
+# see both, as they see a top-level as.character(x).
+.S3method("as.character", "mx_test_warn", function(x, ...) {
+  warning("label warning")
+  rep("W", length(x))
+})
+.S3method("as.character", "mx_test_note", function(x, ...) {
+  message("label note")
+  rep("N", length(x))
+})
+
+test_that("suppressWarnings() silences an as.character() method's warning", {
+  x <- structure(1:2, class = "mx_test_warn")
+  x1 <- structure(1L, class = "mx_test_warn")
+  expect_no_warning(out <- suppressWarnings(as_chr_vec(x)))
+  expect_identical(out, c("W", "W"))
+  expect_no_warning(out <- suppressWarnings(as_chr(x1)))
+  expect_identical(out, "W")
+})
+
+test_that("tryCatch(warning = ) returns its handler's value", {
+  x <- structure(1:2, class = "mx_test_warn")
+  x1 <- structure(1L, class = "mx_test_warn")
+  expect_identical(tryCatch(as_chr_vec(x), warning = function(w) "caught"), "caught")
+  expect_identical(tryCatch(as_chr(x1), warning = function(w) "caught"), "caught")
+})
+
+test_that("A muffled warning is seen once and names the argument, not its data", {
+  x <- structure(1:2, class = "mx_test_warn")
+  seen <- list()
+  out <- withCallingHandlers(
+    as_chr_vec(x),
+    warning = function(w) {
+      seen[[length(seen) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    }
+  )
+  expect_identical(out, c("W", "W"))
+  expect_length(seen, 1L)
+  expect_identical(conditionMessage(seen[[1]]), "label warning")
+  # The method's call: as.character.mx_test_warn(x), not the vector inlined.
+  expect_identical(conditionCall(seen[[1]])[[2]], quote(x))
+  w <- expect_warning(as_chr_vec(x), "label warning", fixed = TRUE)
+  expect_identical(conditionCall(w)[[2]], quote(x))
+})
+
+test_that("suppressMessages() silences an as.character() method's message", {
+  x <- structure(1L, class = "mx_test_note")
+  expect_silent(out <- suppressMessages(as_chr_vec(x)))
+  expect_identical(out, "N")
+  expect_message(as_chr(x), "label note", fixed = TRUE)
+})
+
+test_that("A POSIXct with an unknown time zone warns as as.character() does", {
+  # The downstream case of #1840.
+  x <- structure(0, class = c("POSIXct", "POSIXt"), tzone = "Foo/Bar")
+  plain <- tryCatch(as.character(x), warning = function(w) "warned")
+  skip_if_not(identical(plain, "warned"), "this R knows the time zone 'Foo/Bar'")
+  expect_identical(tryCatch(as_chr_vec(x), warning = function(w) "warned"), "warned")
+  expect_identical(suppressWarnings(as_chr_vec(x)), suppressWarnings(as.character(x)))
+})
+
+test_that("A warning turned into an error is the conversion error", {
+  x <- structure(1L, class = "mx_test_warn")
+  e <- withr::with_options(list(warn = 2), tryCatch(as_chr_vec(x), error = identity))
+  expect_s3_class(e, "rust_error")
+  expect_identical(e$kind, "conversion")
+  expect_match(conditionMessage(e), "as.character() failed: ", fixed = TRUE)
+  expect_match(conditionMessage(e), "label warning", fixed = TRUE)
+})
+
+test_that("The handler path keeps its values rooted under gctorture", {
+  skip_gc_stress_if_disabled()
+  x <- structure(1:3, class = "mx_test_warn")
+  gctorture(TRUE)
+  on.exit(gctorture(FALSE), add = TRUE)
+  out <- suppressWarnings(as_chr_vec(x))
+  caught <- tryCatch(as_chr_vec(x), warning = function(w) "caught")
+  gctorture(FALSE)
+  expect_identical(out, c("W", "W", "W"))
+  expect_identical(caught, "caught")
+})
+
+# endregion
+
 # region: identifiers as labels
 
 test_that("AsCharacterVec counts identifiers whatever their storage", {

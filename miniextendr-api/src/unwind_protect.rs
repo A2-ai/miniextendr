@@ -269,6 +269,17 @@ impl Boundary {
         f()
     }
 
+    /// Whether a boundary is the innermost on this thread, so an R exit
+    /// carried out of an evaluation here ([`call_unwinding`]) reaches a frame
+    /// that resumes it. `false` outside any boundary, and while R code runs
+    /// under the framework's own evaluators, an ALTREP callback with the
+    /// `unsafe` guard or a finalizer: each hides the boundary of the call it
+    /// runs in ([`without_inherited`](Self::without_inherited)).
+    #[inline]
+    pub(crate) fn active() -> bool {
+        BOUNDARY.with(Cell::get) != 0
+    }
+
     /// Make the enclosing boundary the innermost again. Call it before leaving
     /// by an R jump, which skips `Drop`.
     #[inline]
@@ -648,7 +659,7 @@ where
         outcome: None,
     };
     let data = (&raw mut callback).cast();
-    if BOUNDARY.with(Cell::get) != 0 {
+    if Boundary::active() {
         unsafe { call_unwinding(run::<T, F>, data) };
     } else {
         unsafe { crate::expression::try_call(run::<T, F>, data)? };
