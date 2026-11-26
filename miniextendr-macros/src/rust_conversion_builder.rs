@@ -252,7 +252,8 @@ impl RustConversionBuilder {
     ///
     /// The R guard `!anyNA(x)` runs first; a type can still read an input as
     /// missing that `anyNA()` does not see (the reading markers `AsNumeric*` /
-    /// `AsCharacter*` read the text `"NA"` or a blank string as `NA`). So when
+    /// `AsInteger*` / `AsCharacter*` read the text `"NA"` or a blank string as
+    /// `NA`). So when
     /// the parameter converts through plain `TryFromSexp`, the converted value
     /// is asked `TryFromSexp::__mx_has_na` right after its binding, and a
     /// refusal returns the R guard's own condition (see

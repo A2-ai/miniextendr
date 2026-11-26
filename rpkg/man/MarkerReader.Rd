@@ -13,6 +13,7 @@
 \alias{MarkerReader$MarkerArgs$marker_ip}
 \alias{MarkerReader$MarkerArgs$marker_ips}
 \alias{MarkerReader$MarkerArgs$marker_echo}
+\alias{MarkerReader$MarkerArgs$marker_counts}
 \alias{MarkerReader$MarkerArgs$marker_dose}
 \title{MarkerReader Class}
 \usage{
@@ -51,6 +52,8 @@ The address parsed, formatted back.
 How many addresses were parsed.
 
 The numbers read, returned as the marker.
+
+The integers read, returned as the marker.
 
 The number read; the implementation refuses \code{NA} with \code{no_na}.
 }

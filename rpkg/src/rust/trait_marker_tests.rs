@@ -11,8 +11,8 @@
 use std::net::IpAddr;
 
 use miniextendr_api::{
-    AsCharacter, AsCharacterVec, AsFromStr, AsFromStrVec, AsNumeric, AsNumericVec, Missing,
-    miniextendr,
+    AsCharacter, AsCharacterVec, AsFromStr, AsFromStrVec, AsIntegerVec, AsNumeric, AsNumericVec,
+    Missing, miniextendr,
 };
 
 /// Reading-marker parameters on trait methods.
@@ -34,6 +34,8 @@ pub trait MarkerArgs {
     fn marker_ips(&self, value: AsFromStrVec<IpAddr>) -> i32;
     /// The numbers read, returned as the marker.
     fn marker_echo(&self, value: AsNumericVec) -> AsNumericVec;
+    /// The integers read, returned as the marker.
+    fn marker_counts(&self, value: AsIntegerVec) -> AsIntegerVec;
     /// The number read; the implementation refuses `NA` with `no_na`.
     fn marker_dose(&self, value: AsNumeric) -> f64;
 }
@@ -110,6 +112,10 @@ impl MarkerArgs for MarkerReader {
         value
     }
 
+    fn marker_counts(&self, value: AsIntegerVec) -> AsIntegerVec {
+        value
+    }
+
     #[miniextendr(no_na(value))]
     fn marker_dose(&self, value: AsNumeric) -> f64 {
         value.0.expect("no_na refuses NA")
@@ -131,6 +137,7 @@ pub fn marker_args_through_view() -> Vec<String> {
         );
         let view = MarkerArgsView::from_sexp(sexp.get());
         let echoed = view.marker_echo(AsNumericVec(vec![Some(1.0), None, Some(f64::NAN)]));
+        let counts = view.marker_counts(AsIntegerVec(vec![Some(4), None, Some(i32::MAX)]));
         vec![
             number_text(view.marker_number(AsNumeric(Some(2.5))).0),
             number_text(view.marker_number(AsNumeric(None)).0),
@@ -150,6 +157,12 @@ pub fn marker_args_through_view() -> Vec<String> {
                 .0
                 .into_iter()
                 .map(number_text)
+                .collect::<Vec<_>>()
+                .join(","),
+            counts
+                .0
+                .into_iter()
+                .map(|v| v.map_or_else(|| "NA".to_string(), |v| v.to_string()))
                 .collect::<Vec<_>>()
                 .join(","),
         ]

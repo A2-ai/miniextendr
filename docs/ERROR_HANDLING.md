@@ -643,7 +643,7 @@ A bad argument is caught in one of two places: by an R-side check in the
 generated wrapper (the type and length checks most built-in argument types
 get, `no_na`, `inherits`, `not_inherits`, and the `match_arg` / `choices` validation), or by
 the Rust conversion (`TryFromSexp`) for what only Rust can judge, such as a
-non-numeric string given to `AsNumeric`. The arguments without an R-side type
+non-numeric string given to `AsNumeric` or a fraction given to `AsInteger`. The arguments without an R-side type
 check convert in Rust directly: every custom `TryFromSexp` type,
 `Either<L, R>`, the `AsFromStr` family, and every argument whose type checks
 are dropped (`Unchecked<T>`, `no_preconditions`, the crate's `preconditions =
@@ -709,7 +709,7 @@ wrapper's call as written (what `stopifnot()` reports), or under
 `call = caller` the caller's call, or under `call_arg` the call passed as
 `.call` ([CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md)).
 
-`no_na` on a reading marker (`AsNumeric*`, `AsCharacter*`) runs on both
+`no_na` on a reading marker (`AsNumeric*`, `AsInteger*`, `AsCharacter*`) runs on both
 sides: the R guard refuses R's `NA`, and the C wrapper refuses what the
 marker reads as missing after the conversion (`"NA"`, a blank string, a
 factor `NA` level). On an `Either`, only the C wrapper checks, for the arm
@@ -753,12 +753,13 @@ The `<expected>` part comes from the same type table as the R-side checks
 |---------------|--------------|
 | `i32` / `f64` | `a single integer` / `a single double` (`a single whole number` / `a single number` under `coerce`) |
 | `f32`, `i8`, `i16`, `i64`, `isize`, `AsNumeric` | `a single number` |
+| `AsInteger` | `a single whole number` |
 | `u16`, `u32`, `u64`, `usize` | `a single non-negative number` |
 | `bool` | `TRUE or FALSE` |
 | `String`, `&str`, `char`, `PathBuf` | `a single string` |
 | `u8` / `Rcomplex` | `a single raw value` / `a single complex value` |
 | `Vec<T>` / `&[T]` | the R type: `integer`, `double`, `numeric`, `logical`, `character`, `raw`, `complex`, or `integer or whole-number numeric` (`non-negative integer or whole-number numeric` for `u16`, `u32`, `u64`, `usize` elements) |
-| `AsNumericVec` | `numeric` |
+| `AsNumericVec` / `AsIntegerVec` | `numeric` / `integer` |
 | `AsCharacter` / `AsCharacterVec` | `coercible to a single string` / `coercible to character` |
 | `AsFromStr<T>` / `AsFromStrVec<T>` | `a single string` / `character` (what `T` is parsed from) |
 | `Either<L, R>` | `<expected of L> or <expected of R>` (`a single integer or a single string`), the same whichever arm got further. An arm with no entry here is named by what its type declares (a `#[derive(TryFromSexp)]` newtype), else by its own error at run time (`numeric` for a type error, the choices of a `match_arg` enum: `one of "fast", "slow", or a single double`), else by its `@param` noun (``a `DocId` ``) when the other arm is named. An `Option<T>` or `Result<T, ()>` arm reads `NULL or <expected of T>` |

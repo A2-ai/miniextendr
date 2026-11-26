@@ -736,7 +736,7 @@ Written on a single parameter of a standalone function:
 | `inherits(class = "cls", when(class = "data.frame", message = "..."))` | The same check; a refused value of a `when` class gets that message instead (see [Hints for common wrong classes](#hints-for-common-wrong-classes)) |
 | `not_inherits = "cls"` / `not_inherits("a", "b")` | R check `!inherits(x, c(...))`: the argument must inherit from none of the classes (see [Refusing classes](#refusing-classes)) |
 | `not_inherits(class = "cls", message = "...")` / `not_inherits("a", "b", message = "...")` | The same check, failing with your message |
-| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
+| `no_na` | R check `!anyNA(x)`: the argument must not be (or contain) `NA`; `NaN` is refused too. On a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsInteger*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too. On an `Either` written out in the signature (not behind an alias), the check runs only after the conversion, for the arm taken (see below) |
 | `no_na(message = "...")` | The same check, failing with your message |
 | `NonNa<T>` (a type, not an attribute) | `no_na` written in the parameter type: the body receives a `NonNa<T>`, which holds no `NA` (see [Refusing NA in the type](#refusing-na-in-the-type-nonna)) |
 | `preconditions` / `no_preconditions` | Keep or drop this argument's type-derived R checks, whatever the function, impl or crate says (the `Checked<T>` / `Unchecked<T>` spelling; see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |
@@ -784,7 +784,8 @@ The reading markers read some inputs as missing that `anyNA()` passes, so on
 them `no_na` also checks the converted value, in the C wrapper right after the
 conversion. `AsNumeric` / `AsNumericVec` refuse the text `"NA"` and blank
 strings (and factor labels among those), and `NaN` read from the text `"NaN"`,
-as the R guard refuses a numeric `NaN`. `AsCharacter` / `AsCharacterVec`
+as the R guard refuses a numeric `NaN`. `AsInteger` / `AsIntegerVec` refuse
+the same values (`"NaN"` reads as `None` there). `AsCharacter` / `AsCharacterVec`
 refuse a factor `NA` level (`factor(x, exclude = NULL)`) and an `NA` returned
 by a class's `as.character()` method; `"NA"` and `""` stay values there. The
 check follows the type, not its name, so a type alias (`type Dose =
@@ -1476,7 +1477,7 @@ impl Person {
 | `inherits(p(class = "cls", when(class = "df_a, df_b", message = "...")))` | The same check; a refused value of a `when` class gets that message instead ([Hints for common wrong classes](#hints-for-common-wrong-classes)) |
 | `not_inherits(p = "cls_a, cls_b")` | R check `!inherits(p, c(...))`: `p` must inherit from none of the classes |
 | `not_inherits(p(class = "cls_a, cls_b", message = "..."))` | The same check, failing with your message |
-| `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too; on an `Either`, only after the conversion, for the arm taken ([Parameter Attributes](#parameter-attributes)) |
+| `no_na(p, q)` | R check `!anyNA(p)`; on a type that reads more values as missing than `anyNA()` sees (`AsNumeric*`, `AsInteger*`, `AsCharacter*`, and aliases or derived newtypes of them), the converted value is checked too; on an `Either`, only after the conversion, for the arm taken ([Parameter Attributes](#parameter-attributes)) |
 | `no_na(p(message = "..."))` | The same check, failing with your message |
 | `convert(p, q)` | Convert the reference parameters `p` and `q` through their own `TryFromSexp` instead of borrowing external values ([Parameter Attributes](#parameter-attributes)); also on trait impl methods |
 | `preconditions` / `no_preconditions` | Keep or drop the type-derived R checks of this method's parameters, over the impl block's (see [R-side preconditions](#r-side-preconditions-markers-and-defaults)) |

@@ -60,8 +60,10 @@
 //!   `Option<BTreeMap<..>>`, `Option<BTreeSet<..>>`) → `NULL`. No container
 //!   type has a native R NA sentinel either.
 //! - The reading markers' `Option` (`Option<AsNumeric>`,
-//!   `Option<AsNumericVec>`, `Option<AsCharacter>`, `Option<AsCharacterVec>`;
-//!   see [`AsNumeric`](crate::convert::AsNumeric) and
+//!   `Option<AsNumericVec>`, `Option<AsInteger>`, `Option<AsIntegerVec>`,
+//!   `Option<AsCharacter>`, `Option<AsCharacterVec>`; see
+//!   [`AsNumeric`](crate::convert::AsNumeric),
+//!   [`AsInteger`](crate::convert::AsInteger) and
 //!   [`AsCharacter`](crate::convert::AsCharacter)) → `NULL`. `NA` already
 //!   means `Some(marker(None))`, so `NULL` is what the marker's `Option`
 //!   reads back as `None`.

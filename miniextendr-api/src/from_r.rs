@@ -1200,7 +1200,7 @@ pub trait TryFromSexp: Sized {
     ///
     /// The default is `false`, because `no_na`'s R guard (`!anyNA(x)`) already
     /// refuses R's `NA` before the conversion runs. The reading markers
-    /// (`AsNumeric*`, `AsCharacter*`) override it: they read more inputs as
+    /// (`AsNumeric*`, `AsInteger*`, `AsCharacter*`) override it: they read more inputs as
     /// missing than `anyNA()` sees (the text `"NA"`, blank strings, a factor
     /// `NA` level, ...). The layers a marker can sit in (`Option`, `Missing`,
     /// the named-list maps, `Result<T, ()>`, `Either`, `#[derive(TryFromSexp)]`
