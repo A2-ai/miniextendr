@@ -19,7 +19,9 @@ for programmatic catching (one string or a vector, most specific first), and an
 optional `data = ...` argument to attach structured named fields readable as
 `e$<name>` in handlers. `error!`, `warning!` and `condition!` also take a
 leading `call = none`, which raises the condition without a call, like R's
-`call. = FALSE` (see [Conditions without a call](#conditions-without-a-call)).
+`call. = FALSE` (see [Conditions without a call](#conditions-without-a-call)),
+or `call = <expr>`, which raises it with a call the function builds (see
+[Conditions with a given call](#conditions-with-a-given-call)).
 `Result<T, E>` returns get the same treatment through the
 [`RConditionData`](#classed-result-errors-with-rconditiondata-and-rerror) trait
 (hand-written or [derived](#deriving-rcondition)), or, for error enums
@@ -169,9 +171,11 @@ tryCatch(
 
 Rust-side, the macros accept `data = ("name", value)` for a single field or
 `data = [("a", v1), ("b", v2)]` for several (rlang `abort(data = list(...))`
-style). Argument order is fixed: `call = none` (optional, see
-[Conditions without a call](#conditions-without-a-call)), then `class = ...`
-(optional), then `data = ...` (optional), then the format message:
+style). Argument order is fixed: `call = none` or `call = <expr>` (optional,
+see [Conditions without a call](#conditions-without-a-call) and
+[Conditions with a given call](#conditions-with-a-given-call)), then
+`class = ...` (optional), then `data = ...` (optional), then the format
+message:
 
 ```rust
 // Single field:
@@ -737,8 +741,11 @@ pub enum PkgError {
   every entry is converted to an owned `RValue`.
 - **Call.** `#[condition(call = none)]` on the type (every variant) or on a
   variant raises the condition without a call
-  ([Conditions without a call](#conditions-without-a-call)); the others keep
-  the wrapper's call.
+  ([Conditions without a call](#conditions-without-a-call));
+  `#[condition(call = <expr>)]` raises it with the call the expression gives,
+  the fields in scope as for `message`
+  ([Conditions with a given call](#conditions-with-a-given-call)). A
+  variant's `call` replaces the type's; the others keep the wrapper's call.
 - **Argument message.** `#[condition(argument_message = "…")]` on a struct or
   variant, a `format!` string like `message`, is the whole message when the
   error refuses an argument in a conversion (a type's `TryFromSexp` or its
@@ -1223,8 +1230,10 @@ e$parent$line
   condition's, so a handler for `pkg_error_parse` does not catch
   `load_setting()`'s error. Code that cares about the cause tests it:
   `inherits(e$parent, "pkg_error_parse")`.
-- **Call.** The cause reports the same call as the raised condition, or none
-  when the cause was raised with `call = none`.
+- **Call.** The cause reports the call the transport captured, which is the
+  raised condition's unless that one was given a call, or none when the cause
+  was raised with `call = none`. A call given to the cause itself is not kept:
+  the cause travels as an `RValue`, which holds no call (#2414).
 - **Any kind.** The raised condition and its cause can each be an error,
   warning, message or plain condition.
 - **One parent.** A second `with_parent` replaces the first, and the cause
@@ -1255,8 +1264,10 @@ noise. The same opt-out exists per condition:
 | Hand-written `RConditionData` | `fn call(&self) -> ConditionCall { ConditionCall::None }` |
 
 In the macros `call = none` comes first, before `class = …` and `data = …`.
-`none` is the only value: the default (the wrapper's call) needs no spelling,
-and any other value is a compile error, in the macros and in the derive.
+The default (the wrapper's call) needs no spelling; another value is a call
+the function gives ([Conditions with a given call](#conditions-with-a-given-call)),
+and `call = wrapper` / `call = caller`, the `#[miniextendr(call = …)]`
+settings, are compile errors, in the macros and in the derive.
 
 ```rust
 use miniextendr_api::RCondition;
@@ -1314,12 +1325,13 @@ Every transport carries it:
 - trait-ABI vtable shims: the marker survives the re-panic into the consumer,
   so a producer's call-less warning is call-less in the consumer's wrapper too;
 - `with_r_unwind_protect_or_raise` and ALTREP `RUnwind` guards, where a
-  call-less error drops the guard's `call` argument.
+  call-less error drops the guard's `call` argument (and a call-less warning,
+  which such a guard turns into an error, stays call-less).
 
 **Messages.** A message from miniextendr carries no call (`conditionCall(m)`
 is `NULL`), so `message!` has no `call =` form (it is a compile error), and
-`defer_message!(call = none, …)` is accepted for the shared grammar and changes
-nothing.
+`defer_message!(call = none, …)` or `defer_message!(call = <expr>, …)` is
+accepted for the shared grammar and changes nothing.
 
 **Argument-conversion errors** keep the call. They are about an argument of
 the call, and the R-side argument checks they mirror name the call too, so
@@ -1370,6 +1382,75 @@ shares. The option applies to standalone functions, S3 methods
 `call_attribution = "none"` in `Cargo.toml`, applies it to every free
 function, and a per-item `call = wrapper` restores the call on one. Details:
 [CALL_ATTRIBUTION.md](CALL_ATTRIBUTION.md#no-call-at-all-none).
+
+## Conditions with a given call
+
+A condition can also name a call the function builds, so that it reads like
+the code the user wrote. A replacement method `$<-.pkg_model` that refuses
+the value would otherwise report the method's own call; given the
+assignment, its error prints as R's own would:
+
+```rust
+use miniextendr_api::{RCallPart, RCallValue, rust_error};
+
+// `x$table <- value`, which R parses as `` `<-`(x$table, value) ``.
+let call = RCallValue::new("<-")
+    .arg(
+        RCallValue::new("$")
+            .arg(RCallPart::symbol("x"))
+            .arg(RCallPart::symbol("table")),
+    )
+    .arg(RCallPart::symbol("value"));
+rust_error!(call = call, class = "pkg_bad_table", "the table has no `id` column");
+```
+
+```r
+x$table <- data.frame(name = "a")
+# Error in x$table <- value : the table has no `id` column
+```
+
+| Form | Spelling |
+|---|---|
+| Macros | `error!(call = <expr>, …)` / `rust_error!`, `warning!`, `condition!` / `rust_condition!`, `arg_error!`, `defer_warning!`, `defer_condition!` |
+| `RError` | `RError::new("…").with_call(call)` |
+| Derive | `#[condition(call = <expr>)]` on a `#[derive(RCondition)]` type (every variant) or on one variant; the fields are in scope, as for `message` |
+| Hand-written `RConditionData` | `fn call(&self) -> ConditionCall { ConditionCall::from(call) }` (`ConditionCall::Given` boxes the `RCallValue`) |
+
+The expression is an `RCallValue` or a `ConditionCall`.
+
+**`RCallValue`.** A call as an owned, `Send` value: a function and its
+arguments, each a symbol (`RCallPart::symbol("x")`), another call or a
+constant. Like `data = …` values it holds no `SEXP`, so the condition can be
+built anywhere, a deferred one on another thread included, and the call is
+built on R's main thread when the condition is raised.
+
+- `RCallValue::new("f")` calls the function named `f`;
+  `RCallValue::with_function(part)` calls any function part, such as
+  `pkg::f` (`` `::`(pkg, f) ``).
+- `.arg(value)` adds an unnamed argument and `.named_arg("n", value)` a named
+  one. A value that converts into an `RValue` is a constant, so `.arg("x")`
+  is the string `"x"`, as in R's `call("f", "x")`; a name is
+  `RCallPart::symbol("x")`, and the empty symbol is the empty argument of
+  `x[1, ]`.
+- It converts both ways: a `#[miniextendr]` function can take one
+  (`quote(x$table <- value)`) or return one. A call whose parts are not
+  symbols, calls or `RValue` data (a function object, as `do.call()` puts in
+  a call, or an environment) is refused.
+
+**When R can't build the call.** R refuses a symbol or argument name longer
+than 10000 bytes. Building the call would then raise an R error in place of
+the condition, so a condition whose call has such a name reports the call the
+transport captured instead (`RCallValue::unbuildable()` says why).
+
+**How it travels.** The call is the `call` slot of the tagged condition value,
+which the R helper already uses as the condition's call when it is neither
+`NULL` nor `FALSE`. Every transport carries it, as for the
+[no-call marker](#conditions-without-a-call): the generated wrapper, deferred
+conditions, the trait-ABI vtable shims (the consumer reads the call back and
+reports it, since a shim captures no call of its own) and the raising guards.
+A condition carried inside another (its `e$parent`, an entry of `e$errors`)
+travels as an `RValue`, which holds no call, so it reports the call the
+transport captured (#2414).
 
 ## Argument errors from a body
 
@@ -1426,9 +1507,10 @@ fields: `argument` (each refused argument, `..<i>` for an unnamed one) and
 `suggestion` (the name each one most likely meant, or `NA`)
 ([DOTS_TYPED_LIST.md](DOTS_TYPED_LIST.md#refusing-unused-arguments-the-dots-role)).
 
-- **Grammar**: `arg_error!([call = none,] param = <expr>, <format>, <args>…)`.
+- **Grammar**: `arg_error!([call = none | call = <expr>,] param = <expr>, <format>, <args>…)`.
   `param` is the argument's R name (anything `Into<String>`); a leading
-  `call = none` raises it without a call, as for the other macros. There is no
+  `call = none` raises it without a call, and `call = <expr>` with that call,
+  as for the other macros. There is no
   `class =` or `data =`: the classes are the crate's and the only field is
   `param`. A `call` after `param`, a missing `param`, `class =` and `data =`
   are compile errors.

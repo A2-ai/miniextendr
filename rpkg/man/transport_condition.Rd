@@ -8,8 +8,10 @@ transport_condition(what, guard)
 }
 \arguments{
 \item{what}{Which condition: \code{"error"} (a classed error with a data field),
-\code{"arg"} (an argument error), \code{"panic"}, \code{"warning"}, or \code{"reserved"} (data
-fields named \code{kind} and \code{message}); anything else returns \code{0L}.}
+\code{"arg"} (an argument error), \code{"panic"}, \code{"warning"}, \code{"warning_none"} (a
+warning without a call), \code{"warning_given"} (a warning with the call
+\code{site(1L)}), or \code{"reserved"} (data fields named \code{kind} and \code{message});
+anything else returns \code{0L}.}
 
 \item{guard}{Whether to raise through the raising guard.}
 }

@@ -358,7 +358,7 @@ fn conversion_parts_roundtrip() {
 
 /// The "no call" marker (#1725): `FALSE` in the call slot. It survives the
 /// trait-ABI re-panic (`from_tagged_sexp`), which keeps the rest of the
-/// condition as is; a captured call or `NULL` reads back as `Inherit`.
+/// condition as is; `NULL` reads back as `Inherit`.
 #[test]
 fn no_call_marker_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
@@ -390,13 +390,13 @@ fn no_call_marker_roundtrip() {
                 assert_eq!(message, "plain");
                 assert_eq!(class, vec!["pkg_override"]);
                 assert!(data.is_none());
-                assert_eq!(call, ConditionCall::None);
+                assert!(matches!(call, ConditionCall::None));
             }
             other => panic!("wrong variant: {other:?}"),
         }
 
         // The marker wins over a captured call; without it the slot keeps the
-        // call (and reads back as `Inherit`).
+        // call.
         let call = miniextendr_api::OwnedProtect::new(miniextendr_api::sys::Rf_lang1(
             miniextendr_api::sys::Rf_install(c"f".as_ptr()),
         ));
@@ -410,12 +410,12 @@ fn no_call_marker_roundtrip() {
             Some(call.get()),
         );
         assert!(callless.vector_elt(3).is_logical());
-        assert_eq!(
+        assert!(matches!(
             RCondition::from_tagged_sexp(callless)
                 .expect("tagged")
                 .call(),
             ConditionCall::None
-        );
+        ));
         let with_call = rust_condition_value(
             RCondition::Error {
                 message: "e".into(),
@@ -426,23 +426,165 @@ fn no_call_marker_roundtrip() {
             Some(call.get()),
         );
         assert_eq!(with_call.vector_elt(3), call.get());
-        assert_eq!(
-            RCondition::from_tagged_sexp(with_call)
+        let without_call = rust_condition_value(
+            RCondition::Error {
+                message: "e".into(),
+                class: Vec::new(),
+                data: None,
+                call: ConditionCall::Inherit,
+            },
+            None,
+        );
+        assert!(without_call.vector_elt(3).is_nil());
+        assert!(matches!(
+            RCondition::from_tagged_sexp(without_call)
                 .expect("tagged")
                 .call(),
             ConditionCall::Inherit
-        );
+        ));
 
         // A `Result` error built with `without_call()` carries the marker.
         let err = RError::new("data problem").without_call();
         let parts = miniextendr_api::__mx_result_err_parts!(err, "pkg_error", NoShapes);
         let sexp = result_err_condition_value(parts, Some(call.get()));
         assert!(sexp.vector_elt(3).is_logical());
-        assert_eq!(
+        assert!(matches!(
             RCondition::from_tagged_sexp(sexp).expect("tagged").call(),
             ConditionCall::None
-        );
+        ));
     });
+}
+
+/// A given call (#1852): built into the call slot in place of the captured
+/// one, read back by the trait-ABI re-panic (`from_tagged_sexp`) as the same
+/// call. A trait shim's guard captures no call, so a call in the slot is a
+/// given one.
+#[test]
+fn given_call_roundtrip() {
+    r_test_utils::with_r_thread(|| unsafe {
+        use miniextendr_api::condition::{ConditionCall, RCondition, RError};
+        use miniextendr_api::error_value::{result_err_condition_value, rust_condition_value};
+        use miniextendr_api::expression::r_eval_str_global;
+        use miniextendr_api::{IntoR, OwnedProtect, RCallPart, RCallValue, SexpExt, TryFromSexp};
+
+        // 16: `identical()`'s defaults.
+        let identical = |a: miniextendr_api::SEXP, b: miniextendr_api::SEXP| -> bool {
+            miniextendr_api::sys::R_compute_identical(a, b, 16).into()
+        };
+        let quoted = |code: &str| OwnedProtect::new(r_eval_str_global(code).expect("parses"));
+
+        // `x$table <- value`
+        let assign = RCallValue::new("<-")
+            .arg(
+                RCallValue::new("$")
+                    .arg(RCallPart::symbol("x"))
+                    .arg(RCallPart::symbol("table")),
+            )
+            .arg(RCallPart::symbol("value"));
+        let expected = quoted("quote(x$table <- value)");
+        let captured = OwnedProtect::new(miniextendr_api::sys::Rf_lang1(
+            miniextendr_api::sys::Rf_install(c"f".as_ptr()),
+        ));
+        let sexp = OwnedProtect::new(rust_condition_value(
+            RCondition::Warning {
+                message: "w".into(),
+                class: Vec::new(),
+                data: None,
+                call: ConditionCall::from(assign.clone()),
+            },
+            Some(captured.get()),
+        ));
+        let slot = sexp.get().vector_elt(3);
+        assert!(
+            identical(slot, expected.get()),
+            "the given call replaces the captured one"
+        );
+        match RCondition::from_tagged_sexp(sexp.get()).expect("tagged") {
+            RCondition::Warning {
+                call: ConditionCall::Given(call),
+                ..
+            } => {
+                let back = OwnedProtect::new((*call).into_sexp());
+                assert!(identical(back.get(), expected.get()));
+            }
+            other => panic!("wrong variant: {other:?}"),
+        }
+
+        // Every part: a namespaced head, a named constant, an empty argument
+        // and a nested call; a value read back converts to the same call.
+        let expected = quoted(r#"quote(pkg::f(x[1, ], n = 2L, "s", g(TRUE)))"#);
+        let built = RCallValue::with_function(
+            RCallValue::new("::")
+                .arg(RCallPart::symbol("pkg"))
+                .arg(RCallPart::symbol("f"))
+                .into(),
+        )
+        .arg(
+            RCallValue::new("[")
+                .arg(RCallPart::symbol("x"))
+                .arg(1.0)
+                .arg(RCallPart::symbol("")),
+        )
+        .named_arg("n", 2)
+        .arg("s")
+        .arg(RCallValue::new("g").arg(true));
+        let built = OwnedProtect::new(built.into_sexp());
+        assert!(identical(built.get(), expected.get()));
+        let read = RCallValue::try_from_sexp(expected.get()).expect("a call RCallValue reads");
+        let again = OwnedProtect::new(read.into_sexp());
+        assert!(identical(again.get(), expected.get()));
+
+        // A name R refuses: the conversion is an error, and the condition
+        // keeps the captured call instead of raising R's error.
+        let too_long = RCallValue::new("x".repeat(10_001));
+        let err = too_long
+            .clone()
+            .try_into_sexp()
+            .expect_err("a name over the limit");
+        assert!(miniextendr_api::condition::RConditionData::message(&err).contains("10001 bytes"));
+        let sexp = result_err_condition_value(
+            miniextendr_api::__mx_result_err_parts!(
+                RError::new("e").with_call(too_long),
+                "pkg_error",
+                NoShapes
+            ),
+            Some(captured.get()),
+        );
+        assert_eq!(sexp.vector_elt(3), captured.get());
+
+        // A call RCallValue can't read (a function object as the head, as
+        // `do.call()` builds) reads back as `Inherit`.
+        let closure_call = quoted("as.call(list(sum, 1))");
+        let sexp = make_tagged_with_call_slot(closure_call.get());
+        assert!(matches!(
+            RCondition::from_tagged_sexp(sexp.get())
+                .expect("tagged")
+                .call(),
+            ConditionCall::Inherit
+        ));
+        assert!(RCallValue::try_from_sexp(closure_call.get()).is_err());
+    });
+}
+
+/// A tagged error value whose call slot is `call`, as a producer's guard
+/// would write it.
+unsafe fn make_tagged_with_call_slot(call: miniextendr_api::SEXP) -> miniextendr_api::OwnedProtect {
+    use miniextendr_api::SexpExt;
+    use miniextendr_api::condition::ConditionCall;
+    unsafe {
+        let sexp = miniextendr_api::OwnedProtect::new(
+            miniextendr_api::error_value::make_rust_condition_value_with_data(
+                "e",
+                miniextendr_api::error_value::kind::ERROR,
+                &[],
+                None,
+                None,
+                ConditionCall::Inherit,
+            ),
+        );
+        sexp.get().set_vector_elt(3, call);
+        sexp
+    }
 }
 
 /// `arg_error!` (#1740): `kind = "conversion"`, the crate-class marker in the
@@ -458,7 +600,12 @@ fn arg_error_roundtrip() {
         use miniextendr_api::error_value::{kind, rust_condition_value};
         use miniextendr_api::{OwnedProtect, RValue, SexpExt};
 
-        for call in [ConditionCall::Inherit, ConditionCall::None] {
+        for call_none in [false, true] {
+            let call = if call_none {
+                ConditionCall::None
+            } else {
+                ConditionCall::Inherit
+            };
             let cond = RCondition::arg_error("mode", "'mode' is bad".to_string(), call);
             let sexp = OwnedProtect::new(rust_condition_value(cond, None));
             let sexp = sexp.get();
@@ -482,7 +629,7 @@ fn arg_error_roundtrip() {
                     assert!(
                         matches!(&data[0].1, RValue::Character(v) if v == &[Some("mode".to_string())])
                     );
-                    assert_eq!(got, call);
+                    assert_eq!(matches!(got, ConditionCall::None), call_none);
                 }
                 other => panic!("wrong variant: {other:?}"),
             }

@@ -13,6 +13,7 @@
 \alias{SimpleCounter$Counter$raise_error}
 \alias{SimpleCounter$Counter$raise_warning}
 \alias{SimpleCounter$Counter$raise_warning_without_call}
+\alias{SimpleCounter$Counter$raise_warning_with_call}
 \alias{SimpleCounter$Counter$raise_message}
 \alias{SimpleCounter$Counter$raise_condition_classed}
 \alias{SimpleCounter$Counter$raise_error_with_data}
@@ -64,6 +65,11 @@ warning!() — consumer verifies rust_warning + e$kind round-trip.
 Raise a \verb{warning!(call = none, ...)} — verifies that the "no call"
 marker survives the trait-ABI re-panic, so the consumer's warning has
 \code{conditionCall() = NULL} (#1725).
+
+Raise a \verb{warning!(call = <expr>, ...)} with the call
+\code{x$table <- value} — verifies that a given call survives the
+trait-ABI re-panic, so the consumer's warning reports it instead of
+the consumer's own call (#1852).
 
 message!() — consumer verifies rust_message + e$kind round-trip.
 

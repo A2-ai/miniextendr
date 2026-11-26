@@ -15,6 +15,7 @@
 \alias{DoubleCounter$Counter$raise_error}
 \alias{DoubleCounter$Counter$raise_warning}
 \alias{DoubleCounter$Counter$raise_warning_without_call}
+\alias{DoubleCounter$Counter$raise_warning_with_call}
 \alias{DoubleCounter$Counter$raise_message}
 \alias{DoubleCounter$Counter$raise_condition_classed}
 \alias{DoubleCounter$Counter$raise_error_with_data}
@@ -64,6 +65,11 @@ Raise a \verb{warning!()} — verifies \code{rust_warning} layering and
 Raise a \verb{warning!(call = none, ...)} — verifies that the "no call"
 marker survives the trait-ABI re-panic, so the consumer's warning has
 \code{conditionCall() = NULL} (#1725).
+
+Raise a \verb{warning!(call = <expr>, ...)} with the call
+\code{x$table <- value} — verifies that a given call survives the
+trait-ABI re-panic, so the consumer's warning reports it instead of
+the consumer's own call (#1852).
 
 Raise a \verb{message!()} — verifies \code{rust_message} layering and
 \code{e$kind == "message"} across the trait-ABI boundary.

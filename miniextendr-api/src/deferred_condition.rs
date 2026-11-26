@@ -44,8 +44,9 @@
 //! the generated wrappers use for the panicking macros re-raises each queued
 //! condition. Class layering (`c(<classes…>, "rust_warning", "simpleWarning",
 //! "warning", "condition")`), `data` fields as `w$<name>` and
-//! `conditionCall()` (the wrapper's call, or `NULL` for a condition queued
-//! with `call = none`) are identical to the immediate forms. `tryCatch(warning = )` exits the call before the value is returned;
+//! `conditionCall()` (the wrapper's call, `NULL` for a condition queued
+//! with `call = none`, the given call for one queued with `call = <expr>`)
+//! are identical to the immediate forms. `tryCatch(warning = )` exits the call before the value is returned;
 //! `withCallingHandlers` + `invokeRestart("muffleWarning")` keeps it;
 //! `suppressWarnings()` / `suppressMessages()` work as usual.
 //!
@@ -510,12 +511,14 @@ pub(crate) fn raise_condition_helper() -> SEXP {
 /// computed.
 ///
 /// Same grammar as [`crate::warning!`]: optional `call = none` (no call, like
-/// R's `warning(..., call. = FALSE)`), optional `class = …` (one class or a
+/// R's `warning(..., call. = FALSE)`) or `call = <expr>` (that
+/// [`RCallValue`](crate::RCallValue)), optional `class = …` (one class or a
 /// vector, most specific first), optional `data = …` (a pair, a bracketed
 /// list of pairs, or `{ name = value }` sugar), then the `format!` message.
 /// For a typed payload use [`crate::defer_warning()`] with a
 /// `#[derive(RCondition)]` type (`#[condition(call = none)]` on the type
-/// or a variant drops the call there).
+/// or a variant drops the call there, `#[condition(call = <expr>)]` gives
+/// one).
 ///
 /// A later `Err` does not cancel this warning. To avoid warnings on failure,
 /// queue after the last fallible step; see [warning placement](crate::deferred_condition#warning-placement).
@@ -555,8 +558,9 @@ macro_rules! defer_warning {
 ///
 /// Same grammar as [`crate::defer_warning!`]. Unlike [`crate::message!`] a
 /// `class = …` part is accepted and layered in front of `rust_message`.
-/// `call = none` is accepted for the shared grammar and changes nothing: an R
-/// message carries no call, so `conditionCall(m)` is `NULL` either way.
+/// `call = none` and `call = <expr>` are accepted for the shared grammar and
+/// change nothing: an R message carries no call, so `conditionCall(m)` is
+/// `NULL` either way.
 ///
 /// From another thread it goes to R's main thread over a channel; see
 /// [Threads and boundaries](crate::deferred_condition#threads-and-boundaries).

@@ -72,7 +72,7 @@ fn warning_struct_keeps_classes_fields_and_call_policy() {
     assert_eq!(kind, "warning");
     assert_eq!(parts.message, "dropped 2 rows");
     assert_eq!(parts.class, ["pkg_warning"]);
-    assert_eq!(parts.call, ConditionCall::None);
+    assert!(matches!(parts.call, ConditionCall::None));
     let fields = parts.data.unwrap();
     assert_eq!(fields.len(), 1);
     assert_eq!(fields[0].0, "n");
@@ -84,7 +84,7 @@ fn enum_variants_inherit_or_override_the_signal_kind() {
     let (kind, parts) = RCondition::from(Diagnostic::Dropped { n: 3 }).into_parts();
     assert_eq!(kind, "warning");
     assert_eq!(parts.class, ["pkg_diagnostic_dropped", "pkg_diagnostic"]);
-    assert_eq!(parts.call, ConditionCall::Inherit);
+    assert!(matches!(parts.call, ConditionCall::Inherit));
 
     let (kind, parts) = RCondition::from(Diagnostic::Finished(8)).into_parts();
     assert_eq!(kind, "message");
@@ -94,7 +94,7 @@ fn enum_variants_inherit_or_override_the_signal_kind() {
     let (kind, parts) = RCondition::from(Diagnostic::Empty).into_parts();
     assert_eq!(kind, "error");
     assert_eq!(parts.message, "empty input");
-    assert_eq!(parts.call, ConditionCall::None);
+    assert!(matches!(parts.call, ConditionCall::None));
     assert!(parts.data.is_none());
 
     assert_eq!(

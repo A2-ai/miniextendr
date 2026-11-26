@@ -799,6 +799,8 @@ pub use wrap_as::{
     ConvertFrom, ConvertTo, WrapAsEnv, WrapAsR6, WrapAsS3, WrapAsS4, WrapAsS7, WrapAsVctrs,
 };
 pub mod named_vector;
+pub mod rcall_value;
+pub use rcall_value::{RCallPart, RCallValue};
 pub mod rcow;
 pub mod rvalue;
 pub use rvalue::RValue;

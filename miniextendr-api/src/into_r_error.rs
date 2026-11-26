@@ -197,7 +197,7 @@ impl FailedElement {
             message: self.message.clone(),
             class: self.class.clone(),
             data: self.data.clone(),
-            call: self.call,
+            call: self.call.clone(),
         };
         RValue::List(vec![
             (Some("index".to_owned()), index_rvalue(&self.index)),

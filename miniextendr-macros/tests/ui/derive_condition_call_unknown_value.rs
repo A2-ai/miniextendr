@@ -1,5 +1,5 @@
-//! Test: `#[derive(RCondition)]` accepts only `call = none`; any other
-//! `call` value is rejected at the value.
+//! Test: `#[derive(RCondition)]` refuses `call = wrapper` (an attribute
+//! setting of `#[miniextendr]`, not a call) at the value.
 
 use miniextendr_api::condition::RCondition;
 

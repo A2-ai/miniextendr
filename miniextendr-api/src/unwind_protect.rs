@@ -957,8 +957,10 @@ where
                     // `rust_error` class layering, issue #366): an error reporting the
                     // original kind would claim to be a warning. The classes and data
                     // fields are dropped along with the message; the call choice is
-                    // kept (`call = none` drops the guard's call).
-                    let call = parts.call.apply(call);
+                    // kept (`call = none` drops the guard's call, a given call
+                    // replaces it).
+                    // The raise longjmps over this frame: free the rest first.
+                    let call_choice = std::mem::take(&mut parts.call);
                     drop(parts);
                     let msg = "warning!/message!/condition! from an ALTREP or connection \
                                callback context cannot be raised as non-fatal signals; use \
@@ -966,7 +968,19 @@ where
                                signal restart.";
                     crate::panic_telemetry::fire(msg, source);
                     unsafe {
-                        raise_rust_condition_via_stop(|| panic_condition_value(msg, call), call)
+                        raise_rust_condition_via_stop(
+                            move || {
+                                crate::error_value::make_rust_condition_value_with_data(
+                                    msg,
+                                    crate::error_value::kind::PANIC,
+                                    &[],
+                                    call,
+                                    None,
+                                    call_choice,
+                                )
+                            },
+                            call,
+                        )
                     }
                 }
             } else {

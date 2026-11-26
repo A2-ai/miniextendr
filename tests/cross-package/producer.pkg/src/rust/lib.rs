@@ -350,6 +350,18 @@ impl Counter for SimpleCounter {
         miniextendr_api::warning!(call = none, class = "data_warning", "{}", msg);
     }
 
+    fn raise_warning_with_call(&self, msg: String) {
+        use miniextendr_api::{RCallPart, RCallValue};
+        let call = RCallValue::new("<-")
+            .arg(
+                RCallValue::new("$")
+                    .arg(RCallPart::symbol("x"))
+                    .arg(RCallPart::symbol("table")),
+            )
+            .arg(RCallPart::symbol("value"));
+        miniextendr_api::warning!(call = call, class = "table_warning", "{}", msg);
+    }
+
     /// message!() — consumer verifies rust_message + e$kind round-trip.
     fn raise_message(&self, msg: String) {
         miniextendr_api::message!("{}", msg);
@@ -481,6 +493,18 @@ impl Counter for StatefulCounter {
 
     fn raise_warning_without_call(&self, msg: String) {
         miniextendr_api::warning!(call = none, class = "data_warning", "{}", msg);
+    }
+
+    fn raise_warning_with_call(&self, msg: String) {
+        use miniextendr_api::{RCallPart, RCallValue};
+        let call = RCallValue::new("<-")
+            .arg(
+                RCallValue::new("$")
+                    .arg(RCallPart::symbol("x"))
+                    .arg(RCallPart::symbol("table")),
+            )
+            .arg(RCallPart::symbol("value"));
+        miniextendr_api::warning!(call = call, class = "table_warning", "{}", msg);
     }
 
     fn raise_message(&self, msg: String) {

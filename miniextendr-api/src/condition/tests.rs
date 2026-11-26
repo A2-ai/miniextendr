@@ -87,7 +87,7 @@ fn catch_condition_resumes_other_panics() {
 fn arg_error_payload() {
     use super::{CONVERSION_ERROR_CLASS_MARKER, ConditionCall};
     let choices = r#""fast", "slow""#;
-    let check = |cond: RCondition, call: ConditionCall| {
+    let check = |cond: RCondition, call_none: bool| {
         let RCondition::Conversion {
             message,
             class,
@@ -100,11 +100,11 @@ fn arg_error_payload() {
         assert_eq!(message, r#"'mode' should be one of "fast", "slow""#);
         assert_eq!(class, [CONVERSION_ERROR_CLASS_MARKER]);
         assert_data(&data, &[("param", RValue::from("mode"))]);
-        assert_eq!(got_call, call);
+        assert_eq!(matches!(got_call, ConditionCall::None), call_none);
     };
     check(
         catch(|| crate::arg_error!(param = "mode", "'mode' should be one of {choices}")),
-        ConditionCall::Inherit,
+        false,
     );
     let param = String::from("mode");
     check(
@@ -116,13 +116,13 @@ fn arg_error_payload() {
                 choices
             )
         }),
-        ConditionCall::None,
+        true,
     );
     check(
         catch(|| {
             super::ArgError::new("mode", format!("'mode' should be one of {choices}")).raise()
         }),
-        ConditionCall::Inherit,
+        false,
     );
 
     let (kind, parts) = catch(|| crate::arg_error!(param = "x", "bad")).into_parts();
@@ -1486,7 +1486,7 @@ fn conversion_err_parts_keeps_the_call() {
         },
         None,
     );
-    assert_eq!(parts.call, ConditionCall::Inherit);
+    assert!(matches!(parts.call, ConditionCall::Inherit));
 }
 
 /// The crate's `conversion_error_class` follows the error's own classes,
@@ -1946,14 +1946,14 @@ fn call_none_on_every_condition_macro() {
             assert_eq!(message, "plain 1");
             assert!(class.is_empty());
             assert!(data.is_none());
-            assert_eq!(call, ConditionCall::None);
+            assert!(matches!(call, ConditionCall::None));
         }
         other => panic!("wrong variant: {other:?}"),
     }
     match catch(|| crate::rust_error!(call = none, class = ["member", "family"], "e")) {
         RCondition::Error { class, call, .. } => {
             assert_eq!(class, vec!["member", "family"]);
-            assert_eq!(call, ConditionCall::None);
+            assert!(matches!(call, ConditionCall::None));
         }
         other => panic!("wrong variant: {other:?}"),
     }
@@ -1974,24 +1974,24 @@ fn call_none_on_every_condition_macro() {
             assert_eq!(message, "overrides an earlier row");
             assert_eq!(class, vec!["pkg_override"]);
             assert_data(&data, &[("profile", RValue::Integer(vec![Some(3)]))]);
-            assert_eq!(call, ConditionCall::None);
+            assert!(matches!(call, ConditionCall::None));
         }
         other => panic!("wrong variant: {other:?}"),
     }
     match catch(|| crate::condition!(call = none, data = ("n", 1), "tick")) {
         RCondition::Condition { data, call, .. } => {
             assert_data(&data, &[("n", RValue::Integer(vec![Some(1)]))]);
-            assert_eq!(call, ConditionCall::None);
+            assert!(matches!(call, ConditionCall::None));
         }
         other => panic!("wrong variant: {other:?}"),
     }
     match catch(|| crate::rust_condition!(call = none, "tick")) {
-        RCondition::Condition { call, .. } => assert_eq!(call, ConditionCall::None),
+        RCondition::Condition { call, .. } => assert!(matches!(call, ConditionCall::None)),
         other => panic!("wrong variant: {other:?}"),
     }
     // Without `call = none` the call is inherited.
     match catch(|| crate::warning!("sibling")) {
-        RCondition::Warning { call, .. } => assert_eq!(call, ConditionCall::Inherit),
+        RCondition::Warning { call, .. } => assert!(matches!(call, ConditionCall::Inherit)),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -2001,14 +2001,20 @@ fn rerror_without_call_reaches_the_err_parts() {
     use super::{ConditionCall, RConditionData, RError};
 
     let plain = RError::new("m").class("c");
-    assert_eq!(RConditionData::call(&plain), ConditionCall::Inherit);
+    assert!(matches!(
+        RConditionData::call(&plain),
+        ConditionCall::Inherit
+    ));
     let callless = plain.clone().without_call();
-    assert_eq!(RConditionData::call(&callless), ConditionCall::None);
+    assert!(matches!(
+        RConditionData::call(&callless),
+        ConditionCall::None
+    ));
     let parts = crate::__mx_result_err_parts!(callless, "pkg_error", NoShapes);
-    assert_eq!(parts.call, ConditionCall::None);
+    assert!(matches!(parts.call, ConditionCall::None));
     assert_eq!(parts.class, vec!["c"]);
     let parts = crate::__mx_result_err_parts!(plain, "pkg_error", NoShapes);
-    assert_eq!(parts.call, ConditionCall::Inherit);
+    assert!(matches!(parts.call, ConditionCall::Inherit));
 }
 
 #[test]
