@@ -7,8 +7,9 @@
 #   - with the driver: a rebase over both-sides changes to a pin-only
 #     Cargo.lock conflict, rpkg/NAMESPACE and a cross-package wrappers.R
 #     (both -merge, routed by the install recipe) continues, keeps the current
-#     side (our pins, plus the other side's non-conflicting lock edit), and
-#     lists each path in $(git rev-parse --git-dir)/mx-regenerate;
+#     side (our pins, plus the other side's non-conflicting lock edit), lists
+#     each path in $(git rev-parse --git-dir)/mx-regenerate, and says on
+#     stderr which side it kept of each;
 #   - the install recipe routes every cross-package generated path
 #     (NAMESPACE, R/*-wrappers.R, man/*.Rd and configure of both packages);
 #   - a Cargo.lock conflict beyond the pins still stops the rebase, with
@@ -22,6 +23,7 @@
 #     routed by the tracked .gitattributes, still goes through the driver;
 #   - in a linked worktree the -merge routing applies and the list lands in
 #     that worktree's git dir, and the install recipe is idempotent;
+#   - the install recipe warns when rerere.enabled is true, and only then;
 #   - regenerate-merged is a no-op without a list and refuses unknown paths,
 #     including an unrouted path inside a cross-package package.
 set -euo pipefail
@@ -80,6 +82,7 @@ make_repo() { # <dir> <feature libc version>
   git config user.email test@example.invalid
   git config user.name test
   git config commit.gpgsign false
+  git config rerere.enabled false
   mkdir -p scripts rpkg/src/rust "$(dirname "$cross_wrappers")" tests/cross-package/consumer.pkg
   cp "$root/.gitattributes" .gitattributes
   cp "$root/rpkg/.gitattributes" rpkg/.gitattributes
@@ -148,6 +151,14 @@ for path in rpkg/NAMESPACE rpkg/src/rust/Cargo.lock "$cross_wrappers"; do
   check "$path is listed for regeneration" listed "$path"
 done
 check "each path is listed once" test "$(regen_list | wc -l | tr -d ' ')" = 3
+# No `^` anchors: git's "Rebasing (1/1)" progress ends in a carriage return,
+# so the driver's first line shares a log line with it.
+check "the driver says it kept the current side of NAMESPACE" \
+  grep -q "mx-regen: kept rpkg/NAMESPACE from HEAD, dropping the change from .*; run \`just regenerate-merged\`" "$tmp/rebase.log"
+check "the driver says it kept the current side of the cross-package wrappers" \
+  grep -qF "mx-regen: kept $cross_wrappers from HEAD, dropping the change from " "$tmp/rebase.log"
+check "the driver says it kept the current side's Cargo.lock pins" \
+  grep -qF 'mx-regen: kept the conflicting pins of rpkg/src/rust/Cargo.lock from HEAD over ' "$tmp/rebase.log"
 
 # Idempotent install, and a linked worktree gets its own list.
 install_driver
@@ -184,6 +195,8 @@ check "rebase stops on a Cargo.lock conflict beyond the pins" rebase_stops
 check "Cargo.lock is unmerged" unmerged rpkg/src/rust/Cargo.lock
 check "Cargo.lock has conflict markers" has_markers rpkg/src/rust/Cargo.lock
 check "Cargo.lock is not listed for regeneration" not_listed rpkg/src/rust/Cargo.lock
+no_lock_line() { ! grep -q 'mx-regen: kept .*Cargo.lock' "$tmp/rebase.log"; }
+check "the driver claims no kept side of a conflicted Cargo.lock" no_lock_line
 git rebase --abort
 cd "$root"
 # endregion
@@ -217,6 +230,20 @@ check "NAMESPACE is unmerged without markers" unmerged rpkg/NAMESPACE
 check "NAMESPACE has no markers" no_markers rpkg/NAMESPACE
 check "Cargo.lock still went through the driver" listed rpkg/src/rust/Cargo.lock
 git rebase --abort
+cd "$root"
+# endregion
+
+# region: rerere warning
+git init -q "$tmp/rerere"
+cd "$tmp/rerere"
+install_stderr() {
+  { just --justfile "$root/justfile" --working-directory "$PWD" merge-drivers-install > /dev/null; } 2>&1
+}
+git config --local rerere.enabled true
+check "install warns when rerere.enabled is true" \
+  eval 'install_stderr | grep -qF "git config --local rerere.enabled false"'
+git config --local rerere.enabled false
+check "install is quiet when rerere.enabled is false" test -z "$(install_stderr)"
 cd "$root"
 # endregion
 
