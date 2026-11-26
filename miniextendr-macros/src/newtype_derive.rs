@@ -102,7 +102,7 @@ fn parse_newtype(input: &DeriveInput) -> syn::Result<Newtype> {
 
 /// Build a `where` clause that merges the struct's existing predicates with
 /// extra predicates (the `Inner: Trait` bounds the forwarding impl requires).
-fn where_with(base: &Option<syn::WhereClause>, extra: &[TokenStream]) -> TokenStream {
+fn where_with(base: Option<&syn::WhereClause>, extra: &[TokenStream]) -> TokenStream {
     let mut preds: Vec<TokenStream> = base
         .iter()
         .flat_map(|w| w.predicates.iter().map(|p| quote! { #p }))
@@ -197,7 +197,7 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
     let (from_where, error, try_from, try_from_unchecked, prepare, materialize, check_sexp) =
         match &options.validate {
             None => (
-                where_with(base_where, &[inner_converts]),
+                where_with(base_where.as_ref(), &[inner_converts]),
                 quote! { <#inner as ::miniextendr_api::TryFromSexp>::Error },
                 quote! { #inner_try_from.map(|val| #wrap_val) },
                 quote! { #inner_try_from_unchecked.map(|val| #wrap_val) },
@@ -211,7 +211,7 @@ pub fn derive_try_from_sexp(input: DeriveInput) -> syn::Result<TokenStream> {
                 };
                 (
                     where_with(
-                        base_where,
+                        base_where.as_ref(),
                         &[
                             inner_converts,
                             quote! {
@@ -326,7 +326,7 @@ pub fn derive_is_na(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, _) = input.generics.split_for_impl();
     let is_na_where = where_with(
-        &input.generics.where_clause,
+        input.generics.where_clause.as_ref(),
         &[
             quote! { #inner: ::miniextendr_api::IsNA },
             quote! { Self: ::miniextendr_api::RNativeType },
@@ -356,11 +356,14 @@ pub fn derive_into_r(input: DeriveInput) -> syn::Result<TokenStream> {
 
     let unwrap_self = nt.unwrap(&quote! { self });
     let unwrap_v = nt.unwrap(&quote! { v });
-    let into_where = where_with(base_where, &[quote! { #inner: ::miniextendr_api::IntoR }]);
+    let into_where = where_with(
+        base_where.as_ref(),
+        &[quote! { #inner: ::miniextendr_api::IntoR }],
+    );
     // The Vec element impl forwards to `Vec<Inner>: IntoR`; gate it on that so a
     // newtype whose inner lacks a vector conversion still gets the scalar IntoR.
     let vec_elem_where = where_with(
-        base_where,
+        base_where.as_ref(),
         &[quote! { ::std::vec::Vec<#inner>: ::miniextendr_api::IntoR }],
     );
 

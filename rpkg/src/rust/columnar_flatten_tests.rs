@@ -224,7 +224,7 @@ pub fn test_columnar_nested_late_field_grow() -> BuiltDataFrame {
     for entry in file_entries() {
         builder.push(entry).expect("push");
     }
-    builder.finish().expect("finish")
+    builder.finish()
 }
 
 /// Fields two levels down that only the second row carries.

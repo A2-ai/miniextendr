@@ -163,7 +163,7 @@ fn dataframe_builder_missing_field_na_pads() {
             })
             .unwrap();
 
-        let df = builder.finish().unwrap().into_sexp();
+        let df = builder.finish().into_sexp();
         // Both columns present, 2 rows each.
         assert_eq!(df.xlength(), 2);
         assert_eq!(df.vector_elt(0).xlength(), 2);
@@ -194,7 +194,7 @@ fn with_schema_skips_discovery_first_row_none_keeps_declared_type() {
             b: Some("x".into()),
         })
         .unwrap();
-        let df = b.finish().unwrap().into_sexp();
+        let df = b.finish().into_sexp();
         assert_eq!(df.xlength(), 2, "two columns");
         // We check the *types* survived rather than the values to keep the
         // assertion robust against NA encodings. With default discovery the
@@ -248,7 +248,7 @@ fn grow_schema_back_fills_na_on_new_field_end_to_end() {
         b.push(r1).unwrap();
         b.push(r2).unwrap();
         b.push(r3).unwrap();
-        let df = b.finish().unwrap().into_sexp();
+        let df = b.finish().into_sexp();
         // Three columns (a, b, c), each of length 3.
         assert_eq!(df.xlength(), 3, "expected 3 columns after growth");
         for i in 0..3 {
@@ -273,7 +273,7 @@ fn grow_schema_combined_with_with_schema_end_to_end() {
         let r2: BTreeMap<String, i32> = [("a".into(), 20), ("d".into(), 7)].into_iter().collect();
         b.push(r1).unwrap();
         b.push(r2).unwrap();
-        let df = b.finish().unwrap().into_sexp();
+        let df = b.finish().into_sexp();
         assert_eq!(df.xlength(), 2, "declared + grown columns");
         for i in 0..2 {
             assert_eq!(df.vector_elt(i).xlength(), 2);
@@ -302,7 +302,7 @@ fn dataframe_builder_len_is_empty_finish() {
         assert_eq!(builder.len(), 1);
         assert!(!builder.is_empty());
 
-        let df = builder.finish().unwrap().into_sexp();
+        let df = builder.finish().into_sexp();
         assert_eq!(df.vector_elt(0).xlength(), 1);
     });
 }
@@ -488,7 +488,7 @@ fn grow_schema_absorbs_nested_field_from_later_row() {
         b.push(entry("a", None)).unwrap();
         b.push(entry("b", Some("why"))).unwrap();
         b.push(entry("c", None)).unwrap();
-        let df = b.finish().unwrap().into_sexp();
+        let df = b.finish().into_sexp();
 
         let names = df.get_names();
         let names: Vec<&str> = (0..names.xlength())

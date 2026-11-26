@@ -595,7 +595,7 @@ let mut builder = SerdeRowBuilder::<Row>::with_schema(
 ).grow_schema();
 
 builder.push(row)?;
-let df: BuiltDataFrame = builder.finish()?;
+let df: BuiltDataFrame = builder.finish();
 ```
 
 `finish()` returns a rooted `BuiltDataFrame`, including for the empty

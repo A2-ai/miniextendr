@@ -16,8 +16,8 @@ fn catch(f: impl FnOnce() + std::panic::UnwindSafe) -> RCondition {
         .expect("payload must be RCondition")
 }
 
-fn assert_data(data: &Option<ConditionData>, expected: &[(&str, RValue)]) {
-    let data = data.as_ref().expect("data must be Some");
+fn assert_data(data: Option<&ConditionData>, expected: &[(&str, RValue)]) {
+    let data = data.expect("data must be Some");
     assert_eq!(data.len(), expected.len());
     for ((name, value), (exp_name, exp_value)) in data.iter().zip(expected) {
         assert_eq!(name, exp_name);
@@ -46,7 +46,7 @@ fn catch_condition_returns_each_kind() {
     assert_eq!(error_kind, kind::ERROR);
     assert_eq!(parts.message, "failed 1");
     assert_eq!(parts.class, ["member", "family"]);
-    assert_data(&parts.data, &[("n", RValue::from(2))]);
+    assert_data(parts.data.as_ref(), &[("n", RValue::from(2))]);
     let kinds = [
         catch_condition::<()>(|| crate::warning!("w")),
         catch_condition::<()>(|| crate::message!("m")),
@@ -99,7 +99,7 @@ fn arg_error_payload() {
         };
         assert_eq!(message, r#"'mode' should be one of "fast", "slow""#);
         assert_eq!(class, [CONVERSION_ERROR_CLASS_MARKER]);
-        assert_data(&data, &[("param", RValue::from("mode"))]);
+        assert_data(data.as_ref(), &[("param", RValue::from("mode"))]);
         assert_eq!(matches!(got_call, ConditionCall::None), call_none);
     };
     check(
@@ -169,7 +169,7 @@ fn error_class_vector_and_keyed_data() {
             assert_eq!(message, "layered");
             assert_eq!(class, vec!["member", "family"]);
             assert_data(
-                &data,
+                data.as_ref(),
                 &[
                     ("rule", RValue::Integer(vec![Some(1)])),
                     ("detail", RValue::Character(vec![Some("inner".to_string())])),
@@ -1832,7 +1832,7 @@ fn error_single_data_pair() {
         } => {
             assert_eq!(message, "v = 41");
             assert!(class.is_empty());
-            assert_data(&data, &[("value", RValue::Integer(vec![Some(41)]))]);
+            assert_data(data.as_ref(), &[("value", RValue::Integer(vec![Some(41)]))]);
         }
         other => panic!("wrong variant: {other:?}"),
     }
@@ -1866,7 +1866,7 @@ fn error_class_and_data_list_all_value_types() {
             assert_eq!(message, "out of range");
             assert_eq!(class, vec!["validation_error"]);
             assert_data(
-                &data,
+                data.as_ref(),
                 &[
                     ("value", RValue::Double(vec![1.5])),
                     ("code", RValue::Integer(vec![Some(7)])),
@@ -1895,7 +1895,10 @@ fn warning_with_class_and_data() {
         } => {
             assert_eq!(message, "dropped");
             assert_eq!(class, vec!["trunc"]);
-            assert_data(&data, &[("dropped", RValue::Integer(vec![Some(3)]))]);
+            assert_data(
+                data.as_ref(),
+                &[("dropped", RValue::Integer(vec![Some(3)]))],
+            );
         }
         other => panic!("wrong variant: {other:?}"),
     }
@@ -1907,7 +1910,7 @@ fn message_with_data() {
     match cond {
         RCondition::Message { message, data, .. } => {
             assert_eq!(message, "step 2");
-            assert_data(&data, &[("step", RValue::Integer(vec![Some(2)]))]);
+            assert_data(data.as_ref(), &[("step", RValue::Integer(vec![Some(2)]))]);
         }
         other => panic!("wrong variant: {other:?}"),
     }
@@ -1926,7 +1929,7 @@ fn condition_with_class_and_data() {
         } => {
             assert_eq!(message, "processed 10");
             assert_eq!(class, vec!["progress"]);
-            assert_data(&data, &[("n", RValue::Integer(vec![Some(10)]))]);
+            assert_data(data.as_ref(), &[("n", RValue::Integer(vec![Some(10)]))]);
         }
         other => panic!("wrong variant: {other:?}"),
     }
@@ -1973,14 +1976,17 @@ fn call_none_on_every_condition_macro() {
         } => {
             assert_eq!(message, "overrides an earlier row");
             assert_eq!(class, vec!["pkg_override"]);
-            assert_data(&data, &[("profile", RValue::Integer(vec![Some(3)]))]);
+            assert_data(
+                data.as_ref(),
+                &[("profile", RValue::Integer(vec![Some(3)]))],
+            );
             assert!(matches!(call, ConditionCall::None));
         }
         other => panic!("wrong variant: {other:?}"),
     }
     match catch(|| crate::condition!(call = none, data = ("n", 1), "tick")) {
         RCondition::Condition { data, call, .. } => {
-            assert_data(&data, &[("n", RValue::Integer(vec![Some(1)]))]);
+            assert_data(data.as_ref(), &[("n", RValue::Integer(vec![Some(1)]))]);
             assert!(matches!(call, ConditionCall::None));
         }
         other => panic!("wrong variant: {other:?}"),
@@ -2023,7 +2029,7 @@ fn data_list_trailing_comma() {
     match cond {
         RCondition::Error { data, .. } => {
             assert_data(
-                &data,
+                data.as_ref(),
                 &[
                     ("a", RValue::Integer(vec![Some(1)])),
                     ("b", RValue::Integer(vec![Some(2)])),
@@ -2042,7 +2048,7 @@ fn keyed_builder_arm_stringifies_idents() {
     match cond {
         RCondition::Error { data, .. } => {
             assert_data(
-                &data,
+                data.as_ref(),
                 &[
                     ("value", RValue::Integer(vec![Some(42)])),
                     ("code", RValue::Integer(vec![Some(7)])),
@@ -2066,7 +2072,7 @@ fn keyed_builder_arm_trailing_comma_and_mixed_types() {
         RCondition::Warning { data, class, .. } => {
             assert_eq!(class, vec!["trunc"]);
             assert_data(
-                &data,
+                data.as_ref(),
                 &[
                     ("dropped", RValue::Integer(vec![Some(3)])),
                     ("ratio", RValue::Double(vec![0.5])),
@@ -2093,7 +2099,7 @@ fn option_scalar_fields_carry_na() {
     match cond {
         RCondition::Error { data, .. } => {
             assert_data(
-                &data,
+                data.as_ref(),
                 &[
                     ("present", RValue::Integer(vec![Some(9)])),
                     ("missing", RValue::Integer(vec![None])),
@@ -2110,7 +2116,7 @@ fn vec_option_field_carries_embedded_na() {
     match cond {
         RCondition::Error { data, .. } => {
             assert_data(
-                &data,
+                data.as_ref(),
                 &[("codes", RValue::Integer(vec![Some(1), None, Some(3)]))],
             );
         }
@@ -2130,7 +2136,7 @@ fn wide_integer_ladder_via_macro() {
     match cond {
         RCondition::Error { data, .. } => {
             assert_data(
-                &data,
+                data.as_ref(),
                 &[
                     ("small", RValue::Integer(vec![Some(42)])),
                     ("big", RValue::Double(vec![5_000_000_000.0])),
@@ -2147,7 +2153,7 @@ fn debug_fallback_via_macro() {
     match cond {
         RCondition::Error { data, .. } => {
             assert_data(
-                &data,
+                data.as_ref(),
                 &[("range", RValue::Character(vec![Some("0..=100".into())]))],
             );
         }

@@ -315,7 +315,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         .collect();
 
     // Collect trait where clause
-    let trait_where_clause = &trait_item.generics.where_clause;
+    let trait_where_clause = trait_item.generics.where_clause.as_ref();
 
     // Collect method information
     // Filter to only include instance methods (with &self or &mut self) that aren't skipped
@@ -866,7 +866,7 @@ fn generate_method_shim(
     extra_bounds: &ExtraBounds,
     trait_param_idents: &[&syn::Ident],
     trait_type_params: &[&syn::GenericParam],
-    trait_where_clause: &Option<syn::WhereClause>,
+    trait_where_clause: Option<&syn::WhereClause>,
 ) -> TokenStream {
     let method_name = &method.name;
     let shim_name = crate::naming::trait_method_shim_ident(trait_name, method_name);
@@ -1422,7 +1422,7 @@ fn compute_extra_bounds(
 ///
 /// Returns a flat list of predicates suitable for use in a `where` clause.
 fn build_where_predicates(
-    trait_where_clause: &Option<syn::WhereClause>,
+    trait_where_clause: Option<&syn::WhereClause>,
     extra_bounds: &ExtraBounds,
 ) -> Vec<TokenStream> {
     let mut all = Vec::new();
