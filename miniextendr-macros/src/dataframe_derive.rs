@@ -3841,12 +3841,15 @@ fn derive_struct_dataframe(
 /// whatever the user imported. A datetime crate path ([`DATETIME_PATHS`]) drops
 /// its leading `::` and `miniextendr_api::` prefix, so `::jiff::Timestamp`
 /// matches `jiff::Timestamp`; a bare `Timestamp` is a nested struct field, not
-/// a datetime column, so it never reaches this comparison as one. Parentheses and the invisible group around a
-/// `macro_rules!` `$t:ty` are dropped. Aliases and renamed imports stay as
-/// written, so they remain conflicts. A false match (a user `struct String`
-/// in scope) is still caught: every merged column has one Rust type, and the
-/// generated code moves values into and out of it without converting them, so
-/// rustc rejects the mismatch.
+/// a datetime column, so it never reaches this comparison as one. Parentheses
+/// and the invisible group around a `macro_rules!` `$t:ty` are dropped.
+/// Aliases and renamed imports stay as written, so they are different types to
+/// it. Only `conflicts = "string"` asks it (which columns become text, and
+/// whether an auto-expanded field can't); otherwise a column takes every
+/// same-named field and rustc decides (#2141). A false match (a user
+/// `struct String` in scope) is still caught: every merged column has one Rust
+/// type, and the generated code moves values into and out of it without
+/// converting them, so rustc rejects the mismatch.
 fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
     use syn::visit_mut::VisitMut;
 
@@ -3914,10 +3917,26 @@ fn same_column_type(left: &syn::Type, right: &syn::Type) -> bool {
     left == right
 }
 
-/// The fix every cross-variant type-conflict error offers first: the derive
-/// compares spellings ([`same_column_type`]), so one type needs one spelling.
+/// The fix `conflicts = "string"`'s auto-expand refusal offers first: under
+/// that option the derive compares spellings ([`same_column_type`]), so one
+/// type needs one spelling.
 pub(super) const SPELL_TYPES_ALIKE: &str = "If both name the same type, spell it the same way \
-     in every variant (type aliases and renamed imports are compared as written)";
+     in every variant (under `conflicts = \"string\"`, type aliases and renamed imports are \
+     compared as written)";
+
+/// What an enum column holds. Fields that share a column must agree on it:
+/// rustc checks their types (#2141), but a value, an `as_factor` value and a
+/// nested struct are different columns whatever the types.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum ColumnKind {
+    /// One value per row (a scalar field, an expanded element, a map's keys
+    /// or values).
+    Value,
+    /// An `#[dataframe(as_factor)]` field.
+    Factor,
+    /// A nested struct, flattened into `<field>_<inner>` columns.
+    Struct,
+}
 
 /// A resolved column in the unified schema across all enum variants.
 ///
@@ -3932,29 +3951,32 @@ pub(super) struct ResolvedColumn {
     pub(super) ty: syn::Type,
     /// Indices of variants that contain this field.
     pub(super) present_in: Vec<usize>,
-    /// The variant that registered the column first (whose spelling `ty` keeps),
-    /// named in a type-conflict error.
+    /// The first variant that has the field, named when another disagrees on
+    /// the column's kind.
     pub(super) first_variant: syn::Ident,
     /// Whether this column was coerced to `String` due to type conflicts.
     /// When true, values are converted via `ToString::to_string()` at push time.
     pub(super) string_coerced: bool,
-    /// Whether this column should be emitted as an R factor (via `as_factor` attribute).
-    /// When `true`, `into_data_frame` wraps the `Vec<Option<T>>` in `FactorOptionVec<T>`
-    /// before calling `IntoR::into_sexp`, using the `UnitEnumFactor` blanket impl.
-    pub(super) is_factor: bool,
+    /// What the column holds; an `as_factor` column is emitted through
+    /// `FactorOptionVec<T>`.
+    pub(super) kind: ColumnKind,
 }
 
 /// Accumulates unique columns for an enum-to-dataframe unified schema.
 ///
-/// As columns are registered from each variant's fields, the registry detects
-/// duplicates and validates type consistency. When `coerce_to_string` is enabled,
-/// type conflicts are resolved by coercing to `String`; otherwise they produce errors.
+/// As columns are registered from each variant's fields, the registry merges
+/// same-named ones. A column keeps the first variant's spelling of its type,
+/// and rustc checks every later field against it (#2141: an alias joins it, a
+/// different type is refused at that field through `SameColumn`). When
+/// `coerce_to_string` is enabled, a column whose spellings differ
+/// ([`same_column_type`]) is coerced to `String` instead.
 pub(super) struct ColumnRegistry<'a> {
     /// The ordered list of resolved columns in the schema.
     pub(super) columns: Vec<ResolvedColumn>,
     /// Maps column name strings to their index in `columns` for O(1) dedup lookup.
     pub(super) col_index: std::collections::HashMap<String, usize>,
-    /// Whether to coerce type-conflicting columns to `String` instead of erroring.
+    /// Whether to coerce type-conflicting columns to `String` instead of
+    /// leaving them to rustc.
     pub(super) coerce_to_string: bool,
     /// Cached `String` type AST node, used as the coercion target type.
     pub(super) string_ty: &'a syn::Type,
@@ -3973,37 +3995,49 @@ impl<'a> ColumnRegistry<'a> {
 
     /// Register a single column in the schema, or merge with an existing column.
     ///
-    /// If a column with the same name already exists, validates that the types match.
-    /// On type conflict: coerces to `String` (if `coerce_to_string` is true) or
-    /// returns `Err`. The `variant_idx` is appended to the column's `present_in` list.
-    fn register(
+    /// A column of that name takes a field of the same kind whatever its type,
+    /// keeping the first spelling (rustc checks the rest, #2141), unless
+    /// `coerce_to_string` is set and the spellings differ: then it becomes a
+    /// `String` column. A field of another kind is an error at `span`. The
+    /// `variant_idx` is appended to the column's `present_in` list.
+    pub(super) fn register(
         &mut self,
         col_name: &str,
         col_ty: &syn::Type,
+        kind: ColumnKind,
         variant_idx: usize,
-        variant_name: &syn::Ident,
-        error_span: Span,
+        variant: &syn::Ident,
+        span: proc_macro2::Span,
     ) -> syn::Result<()> {
         if let Some(&idx) = self.col_index.get(col_name) {
             let existing = &self.columns[idx];
-            if !existing.string_coerced && !same_column_type(&existing.ty, col_ty) {
-                if self.coerce_to_string {
-                    self.columns[idx].ty = self.string_ty.clone();
-                    self.columns[idx].string_coerced = true;
-                } else {
-                    return Err(syn::Error::new(
-                        error_span,
-                        format!(
-                            "type conflict for field `{col_name}`: variant `{variant_name}` has \
-                             type `{}`, variant `{}` has `{}`. {SPELL_TYPES_ALIKE}; \
-                             otherwise use `#[dataframe(conflicts = \"string\")]` to store \
-                             conflicting fields as String",
-                            crate::type_inspect::type_display(col_ty),
-                            existing.first_variant,
-                            crate::type_inspect::type_display(&existing.ty),
-                        ),
-                    ));
-                }
+            if existing.kind != kind {
+                let what = |kind| match kind {
+                    ColumnKind::Value => "a value column",
+                    ColumnKind::Factor => "an `as_factor` column",
+                    ColumnKind::Struct => {
+                        "a nested struct (a bare type name other than a \
+                         primitive or `String` is flattened as one)"
+                    }
+                };
+                return Err(syn::Error::new(
+                    span,
+                    format!(
+                        "field `{col_name}` is {} in variant `{variant}` but {} in variant `{}`: \
+                         same-named fields share one column, so they must be the same kind; \
+                         rename one with `#[dataframe(rename = \"...\")]`",
+                        what(kind),
+                        what(existing.kind),
+                        existing.first_variant,
+                    ),
+                ));
+            }
+            if self.coerce_to_string
+                && !existing.string_coerced
+                && !same_column_type(&existing.ty, col_ty)
+            {
+                self.columns[idx].ty = self.string_ty.clone();
+                self.columns[idx].string_coerced = true;
             }
             self.columns[idx].present_in.push(variant_idx);
         } else {
@@ -4012,31 +4046,11 @@ impl<'a> ColumnRegistry<'a> {
                 col_name: crate::naming::name_ident(col_name),
                 ty: col_ty.clone(),
                 present_in: vec![variant_idx],
-                first_variant: variant_name.clone(),
+                first_variant: variant.clone(),
                 string_coerced: false,
-                is_factor: false,
+                kind,
             });
             self.col_index.insert(col_name.to_string(), idx);
-        }
-        Ok(())
-    }
-
-    /// Like `register`, but marks the column as a factor column (`is_factor = true`).
-    ///
-    /// Used for fields annotated with `#[dataframe(as_factor)]`. The companion struct
-    /// field type stays `Vec<Option<T>>`, but `into_data_frame` wraps it in
-    /// `FactorOptionVec<T>` (using the `UnitEnumFactor` blanket `IntoR` impl).
-    pub(super) fn register_factor(
-        &mut self,
-        col_name: &str,
-        col_ty: &syn::Type,
-        variant_idx: usize,
-        variant_name: &syn::Ident,
-        error_span: Span,
-    ) -> syn::Result<()> {
-        self.register(col_name, col_ty, variant_idx, variant_name, error_span)?;
-        if let Some(&idx) = self.col_index.get(col_name) {
-            self.columns[idx].is_factor = true;
         }
         Ok(())
     }
