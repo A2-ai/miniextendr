@@ -101,3 +101,21 @@ fn rdecimalops_division_by_zero() {
     assert!(RDecimalOps::div_str(&d, "0").is_err());
     assert!(RDecimalOps::rem_str(&d, "0").is_err());
 }
+
+/// `i32::MIN` is R's `NA_integer_`, so narrowing to R integer storage stops
+/// one above it (#1675).
+#[test]
+fn decimal_to_i32_excludes_the_na_sentinel() {
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(Decimal::from(i32::MIN)),
+        Err(CoerceError::Overflow)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(Decimal::from(i32::MIN + 1)),
+        Ok(i32::MIN + 1)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(Decimal::from(i32::MAX)),
+        Ok(i32::MAX)
+    );
+}

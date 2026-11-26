@@ -188,3 +188,21 @@ fn rbigintbitops_not() {
     let not_one = RBigIntBitOps::bit_not(&one);
     assert_eq!(ToString::to_string(&not_one), "-2"); // ~1 = -2
 }
+
+/// `i32::MIN` is R's `NA_integer_`, so narrowing to R integer storage stops
+/// one above it (#1675).
+#[test]
+fn bigint_to_i32_excludes_the_na_sentinel() {
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(BigInt::from(i32::MIN)),
+        Err(CoerceError::Overflow)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(BigInt::from(i32::MIN + 1)),
+        Ok(i32::MIN + 1)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(BigInt::from(i32::MAX)),
+        Ok(i32::MAX)
+    );
+}

@@ -115,7 +115,8 @@ impl TryCoerce<i64> for Decimal {
     }
 }
 
-/// `Decimal` → `i32`: fallible, may not fit or may have fractional part
+/// `Decimal` → `i32`: fallible, may not fit or may have fractional part.
+/// `i32::MIN` is R's `NA_integer_`, so it is out of range (#1675).
 impl TryCoerce<i32> for Decimal {
     type Error = CoerceError;
 
@@ -126,7 +127,9 @@ impl TryCoerce<i32> for Decimal {
         if self.fract() != Decimal::ZERO {
             return Err(CoerceError::PrecisionLoss);
         }
-        self.to_i32().ok_or(CoerceError::Overflow)
+        self.to_i32()
+            .filter(|value| *value != i32::MIN)
+            .ok_or(CoerceError::Overflow)
     }
 }
 
