@@ -14,7 +14,7 @@ expression: generate_s7_r_wrapper(&parsed)
 Mixed <- S7::new_class("Mixed",
   properties = c(list(
     .ptr = S7::class_any,
-    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_miniextendr_macros_Mixed__length, .call = NULL, self@.ptr))
+    length = S7::new_property(class = S7::class_double, getter = function(self) { .val <- .Call(C_miniextendr_macros_Mixed__length, .call = NULL, self@.ptr); if (inherits(.val, "rust_condition_value") && isTRUE(attr(.val, "__rust_condition__"))) return(.miniextendr_raise_condition(.val, NULL)); .val })
   ), .rdata_properties_Mixed),
   constructor = function(x, .ptr = NULL) {
     if (is.null(.ptr)) {

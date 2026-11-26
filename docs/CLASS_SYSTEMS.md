@@ -980,13 +980,19 @@ impl Range {
 Range <- S7::new_class("Range",
     properties = list(
         .ptr = S7::class_any,
-        length = S7::new_property(
-            getter = function(self) .Call(C_mypkg_Range__length, self@.ptr)
+        length = S7::new_property(class = S7::class_double,
+            getter = function(self) {
+                .val <- .Call(C_mypkg_Range__length, .call = NULL, self@.ptr)
+                # a Rust error is raised here, never returned as the value
+                if (<.val is a Rust condition>) return(.miniextendr_raise_condition(.val, NULL))
+                .val
+            }
         ),
-        midpoint = S7::new_property(
-            getter = function(self) .Call(C_mypkg_Range__get_midpoint, self@.ptr),
+        midpoint = S7::new_property(class = S7::class_double,
+            getter = function(self) { <the same, for get_midpoint> },
             setter = function(self, value) {
-                .Call(C_mypkg_Range__set_midpoint, self@.ptr, value)
+                .val <- .Call(C_mypkg_Range__set_midpoint, .call = NULL, self@.ptr, value)
+                if (<.val is a Rust condition>) return(.miniextendr_raise_condition(.val, NULL))
                 self
             }
         )
@@ -1027,6 +1033,14 @@ r@length         # 10 (length preserved)
 - A getter + setter with the same `prop` name creates a dynamic (read-write) property
 - Property methods are NOT exposed as S7 generics (accessed via `@` only)
 - Setters must take exactly one parameter (the new value)
+- The getter's return type gives the property's S7 class (`i32` →
+  `class_integer`, `f64` → `class_double`, ...), but S7 calls a setter with
+  whatever value is assigned, without checking that class. The setter's
+  parameter converts like any argument instead, so an `i32` property refuses
+  `3`, `3.5` and `"3"` as `'value' must be a single integer` and keeps its
+  value. Assign `3L`.
+- A getter's, setter's or validator's `Err` (or panic) is raised as an R
+  error with no call (S7 calls these from its own frames).
 
 ---
 

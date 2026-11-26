@@ -328,6 +328,7 @@ mod pipe_builder_tests;
 mod plain_na_argument_tests;
 mod precondition_bench_fixtures;
 mod precondition_marker_tests;
+mod property_condition_tests;
 mod protect_pool_tests;
 mod quoted_tests;
 mod r6_default_tests;
