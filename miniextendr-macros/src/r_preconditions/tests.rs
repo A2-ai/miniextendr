@@ -368,6 +368,39 @@ fn guards_raise_the_argument_error_with_the_given_call() {
     assert!(empty.guards(Some(".mx_call")).is_empty());
 }
 
+/// A borrowed native scalar reads the same one-element vector as the scalar,
+/// so it gets the scalar's R check and conversion wording, shared or `mut`
+/// (#1675). Other borrowed paths stay unchecked.
+#[test]
+fn borrowed_native_scalar_checks_as_the_scalar() {
+    let checks = |ty: &str| -> Vec<(String, String)> {
+        assertions_for(ty, "x")
+            .iter()
+            .map(|a| (a.message(), a.condition.clone()))
+            .collect()
+    };
+    for scalar in ["i32", "f64", "u8", "Rcomplex"] {
+        for borrowed in [format!("&{scalar}"), format!("&mut {scalar}")] {
+            assert_eq!(checks(&borrowed), checks(scalar), "{borrowed}");
+            assert_eq!(
+                conversion_expectation(&parse_type(&borrowed), false),
+                conversion_expectation(&parse_type(scalar), false),
+                "{borrowed}"
+            );
+        }
+    }
+    assert_eq!(
+        conversion_expectation(&parse_type("Option<&i32>"), false),
+        Some("NULL or a single integer".to_string())
+    );
+    for unchecked in ["&RLogical", "&Dots", "&Counter"] {
+        assert!(
+            r_check_for_type(&parse_type(unchecked)).is_none(),
+            "{unchecked}"
+        );
+    }
+}
+
 /// The conversion-side expectation (#1591) reads the same classification:
 /// scalars name one value, vectors the R type, `Option` adds `NULL`,
 /// `coerce` widens with the gate, and types without a check have none.

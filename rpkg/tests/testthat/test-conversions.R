@@ -108,6 +108,22 @@ test_that("conversions slices work", {
   expect_equal(conv_slice_rlog_len(c(TRUE, FALSE, TRUE)), 3L)
 })
 
+test_that("a borrowed scalar is checked in R like the scalar (#1675)", {
+  for (x in list(1.5, 1, "1", 1:2)) {
+    e <- tryCatch(conv_ref_i32_arg(x), error = identity)
+    expected <- if (length(x) == 1L) "'x' must be integer" else "'x' must have length 1"
+    expect_identical(conditionMessage(e), expected)
+    expect_identical(e$param, "x")
+  }
+  e <- tryCatch(conv_ref_mut_i32_add_one(2), error = identity)
+  expect_identical(conditionMessage(e), "'x' must be integer")
+  expect_identical(e$param, "x")
+  # Past the R check, the C wrapper's conversion names the same expectation.
+  result <- .Call(miniextendr:::C_miniextendr_conv_ref_i32_arg, NULL, 1.5)
+  expect_identical(result$kind, "conversion")
+  expect_identical(result$error, "'x' must be a single integer: got numeric")
+})
+
 test_that("conversions references work", {
   expect_equal(conv_ref_i32_arg(1L), 1L)
   expect_equal(conv_ref_mut_i32_add_one(1L), 2L)
