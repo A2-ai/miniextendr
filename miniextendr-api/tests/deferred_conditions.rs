@@ -11,15 +11,14 @@ use miniextendr_api::error_value::kind;
 use miniextendr_api::{defer_condition, defer_message, defer_warning};
 
 /// `(name, i32)` view of a data payload (`RValue` has no `PartialEq`).
-fn ints(data: &Option<ConditionData>) -> Vec<(String, Option<i32>)> {
-    data.as_ref()
-        .map(|fields| {
-            fields
-                .iter()
-                .map(|(name, value)| (name.clone(), value.as_i32()))
-                .collect()
-        })
-        .unwrap_or_default()
+fn ints(data: Option<&ConditionData>) -> Vec<(String, Option<i32>)> {
+    data.map(|fields| {
+        fields
+            .iter()
+            .map(|(name, value)| (name.clone(), value.as_i32()))
+            .collect()
+    })
+    .unwrap_or_default()
 }
 
 fn on_main_with_empty_queue<T: Send + 'static>(f: impl FnOnce() -> T + Send + 'static) -> T {
@@ -44,7 +43,10 @@ fn typed_payloads_keep_kind_class_and_data() {
         assert_eq!(parts[0].0, kind::WARNING);
         assert_eq!(parts[0].1.message, "w");
         assert_eq!(parts[0].1.class, vec!["a", "b"]);
-        assert_eq!(ints(&parts[0].1.data), vec![("n".to_string(), Some(1))]);
+        assert_eq!(
+            ints(parts[0].1.data.as_ref()),
+            vec![("n".to_string(), Some(1))]
+        );
         assert_eq!(parts[1].0, kind::MESSAGE);
         assert_eq!(parts[1].1.class, vec!["c"]);
         assert!(parts[1].1.data.is_none());
@@ -73,7 +75,10 @@ fn macro_forms_keep_class_data_and_format() {
         assert_eq!(parts[0].0, kind::WARNING);
         assert_eq!(parts[0].1.message, "inner 2");
         assert_eq!(parts[0].1.class, vec!["t"]);
-        assert_eq!(ints(&parts[0].1.data), vec![("n".to_string(), Some(2))]);
+        assert_eq!(
+            ints(parts[0].1.data.as_ref()),
+            vec![("n".to_string(), Some(2))]
+        );
         assert_eq!(parts[1].0, kind::MESSAGE);
         assert_eq!(parts[1].1.message, "step 1");
         assert_eq!(parts[2].0, kind::CONDITION);

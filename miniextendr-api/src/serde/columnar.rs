@@ -211,7 +211,7 @@ where
     for row in iter {
         builder.push(row)?;
     }
-    builder.finish()
+    Ok(builder.finish())
 }
 
 /// Parallel counterpart to [`iter_to_dataframe`]: fan row→column serialisation
@@ -930,8 +930,8 @@ where
     // Consume each rooted frame into the preserved list. The returned builder
     // remains rooted while the caller does more R work before IntoR (#1811).
     let mut out = NamedListBuilder::with_capacity(2);
-    out.push(names.ok, ok_builder.finish()?);
-    out.push(names.err, err_builder.finish()?);
+    out.push(names.ok, ok_builder.finish());
+    out.push(names.err, err_builder.finish());
     Ok(out)
 }
 
@@ -994,7 +994,7 @@ impl Default for DispatchNames {
 /// );
 /// b.push(Row { id: 1, label: None }).unwrap();
 /// b.push(Row { id: 2, label: Some("two".into()) }).unwrap();
-/// let df = b.finish().unwrap();
+/// let df = b.finish();
 /// ```
 pub struct SerdeRowBuilder<T: Serialize> {
     /// Schema set on first push (default mode), at construction
@@ -1066,7 +1066,7 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     /// for i in 0..100 {
     ///     b.push(R { id: i, name: format!("row_{i}") }).unwrap();
     /// }
-    /// let df = b.finish().unwrap();
+    /// let df = b.finish();
     /// ```
     pub fn with_schema<S, I>(schema: I, nrow_hint: Option<usize>) -> Self
     where
@@ -1149,7 +1149,7 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     /// let r2: BTreeMap<String, i32> = [("a".into(), 2), ("b".into(), 3)].into_iter().collect();
     /// b.push(r1).unwrap();
     /// b.push(r2).unwrap();  // adds column "b", back-fills NA on row 0
-    /// let df = b.finish().unwrap();
+    /// let df = b.finish();
     /// ```
     pub fn grow_schema(mut self) -> Self {
         self.grow = true;
@@ -1178,7 +1178,7 @@ impl<T: Serialize> SerdeRowBuilder<T> {
             self.filled = vec![false; ncol];
             self.schema = Some(schema);
         } else if self.grow {
-            self.absorb_new_fields(&row)?;
+            self.absorb_new_fields(&row);
         }
 
         let schema = self.schema.as_ref().expect("schema set above");
@@ -1210,16 +1210,16 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     /// and each new one gets a fresh [`ColumnBuffer`] back-filled with
     /// `self.nrow` NA values, so the per-column length invariant holds going
     /// into the fill step.
-    fn absorb_new_fields(&mut self, row: &T) -> Result<(), RSerdeError> {
+    fn absorb_new_fields(&mut self, row: &T) {
         // A row that fails the probe (e.g. top-level None) adds nothing; the
         // fill step reports it.
         let mut discoverer = SchemaDiscoverer::default();
         if row.serialize(&mut discoverer).is_err() {
-            return Ok(());
+            return;
         }
         let schema = self.schema.as_mut().expect("schema set by push gating");
         if !schema.field_map.lacks_any(&discoverer.shape) {
-            return Ok(());
+            return;
         }
 
         let mut shape = ShapeUnion::from_layout(&schema.field_map, &schema.fields);
@@ -1251,7 +1251,6 @@ impl<T: Serialize> SerdeRowBuilder<T> {
             .collect();
         self.filled = vec![false; fields.len()];
         *schema = Schema { fields, field_map };
-        Ok(())
     }
 
     /// Number of rows pushed so far.
@@ -1268,15 +1267,15 @@ impl<T: Serialize> SerdeRowBuilder<T> {
     ///
     /// An empty builder produces an empty 0-row 0-column data.frame
     /// (matching `vec_to_dataframe(&[])`).
-    pub fn finish(self) -> Result<BuiltDataFrame, RSerdeError> {
+    pub fn finish(self) -> BuiltDataFrame {
         let Some(schema) = self.schema else {
             // SAFETY: `empty_dataframe` returns a well-formed 0-row data.frame SEXP.
-            return Ok(unsafe { BuiltDataFrame::adopt_sexp(empty_dataframe()) });
+            return unsafe { BuiltDataFrame::adopt_sexp(empty_dataframe()) };
         };
         // SAFETY: nrow columns × matching lengths invariant maintained by push.
         // `assemble_with_scope` runs `assemble_dataframe` then drops the scope —
         // see its docstring for the drop-order rationale.
-        Ok(unsafe { assemble_with_scope(&schema, &self.columns, self.nrow, self.scope) })
+        unsafe { assemble_with_scope(&schema, &self.columns, self.nrow, self.scope) }
     }
 }
 
@@ -1596,11 +1595,7 @@ struct SchemaDiscoverer {
 impl SchemaDiscoverer {
     /// Process a field: a value that serializes as a struct or map with fields
     /// is a nested struct to flatten, anything else a scalar column.
-    fn process_field<T: ?Sized + Serialize>(
-        &mut self,
-        key: &str,
-        value: &T,
-    ) -> Result<(), RSerdeError> {
+    fn process_field<T: ?Sized + Serialize>(&mut self, key: &str, value: &T) {
         let mut nested = SchemaDiscoverer::default();
         let shape = if value.serialize(&mut nested).is_ok() && !nested.shape.key_order.is_empty() {
             KeyShape::Compound(nested.shape)
@@ -1612,7 +1607,6 @@ impl SchemaDiscoverer {
             KeyShape::Scalar(type_probe.col_type)
         };
         self.shape.absorb(key.to_string(), shape);
-        Ok(())
     }
 }
 
@@ -1658,7 +1652,8 @@ impl ser::SerializeStruct for SchemaStructDiscoverer<'_> {
         key: &'static str,
         value: &T,
     ) -> Result<(), RSerdeError> {
-        self.parent.process_field(key, value)
+        self.parent.process_field(key, value);
+        Ok(())
     }
 
     fn end(self) -> Result<(), RSerdeError> {
@@ -1688,7 +1683,8 @@ impl ser::SerializeMap for SchemaMapDiscoverer<'_> {
 
     fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), RSerdeError> {
         let key = self.pending_key.take().unwrap_or_default();
-        self.parent.process_field(&key, value)
+        self.parent.process_field(&key, value);
+        Ok(())
     }
 
     fn end(self) -> Result<(), RSerdeError> {

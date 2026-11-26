@@ -2469,9 +2469,7 @@ pub fn gc_stress_builder_with_schema() -> SEXP {
         })
         .expect("gc_stress_builder_with_schema: push failed");
     }
-    let df = b
-        .finish()
-        .expect("gc_stress_builder_with_schema: finish failed");
+    let df = b.finish();
     df.into_sexp()
 }
 
@@ -2504,9 +2502,7 @@ pub fn gc_stress_builder_grow_schema() -> SEXP {
         b.push(row)
             .expect("gc_stress_builder_grow_schema: push failed");
     }
-    let df = b
-        .finish()
-        .expect("gc_stress_builder_grow_schema: finish failed");
+    let df = b.finish();
     df.into_sexp()
 }
 
@@ -2551,9 +2547,7 @@ pub fn gc_stress_built_dataframe() {
         .expect("gc_stress_built_dataframe: push failed");
     }
     // The returned handle owns a GC root (`R_PreserveObject`) for the frame.
-    let built = b
-        .finish()
-        .expect("gc_stress_built_dataframe: finish failed");
+    let built = b.finish();
 
     // Force a burst of R allocations while `built` is held. Under gctorture(TRUE)
     // every allocation is a full GC; a bare (unrooted) frame would be reclaimed
