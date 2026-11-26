@@ -1892,7 +1892,7 @@ fn expand_fn<T: From<proc_macro2::TokenStream>>(
     // `not_inherits` / `no_na` checks stay: the Rust conversion does not
     // repeat them. (The C wrapper's
     // post-conversion `no_na` check covers only what a type reads as `NA`
-    // beyond `anyNA()`, such as `"NA"` for `AsNumeric`, except on an
+    // beyond `anyNA()`, such as `"NA"` for `AsNumeric` / `AsInteger`, except on an
     // `Either`, which has no R guard and is checked only in Rust.)
     let precondition_prelude = {
         // `set.seed()` validates the seed of `rng(seed = ..)` (#2198), so

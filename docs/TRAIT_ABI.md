@@ -271,7 +271,7 @@ View never reads the data, so a consumer needs no part in this.
 The View converts each argument to R with `IntoR`, and the shim reads it back
 with `TryFromSexp`, so a trait-method parameter type needs both. `Missing<T>`
 crosses as R's missing-argument sentinel when absent. The reading markers
-(`AsNumeric`, `AsNumericVec`, `AsCharacter`, `AsCharacterVec`) cross as their
+(`AsNumeric`, `AsNumericVec`, `AsInteger`, `AsIntegerVec`, `AsCharacter`, `AsCharacterVec`) cross as their
 inner value, and `AsFromStr<T>` / `AsFromStrVec<T>` as their `Display` text.
 The borrowed views `StrVec<'_>` and `RCow<'_, T>` have no `TryFromSexp`: the
 shim binds each to a local copy of its argument slot, so the implementation

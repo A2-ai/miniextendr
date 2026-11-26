@@ -308,7 +308,7 @@ pub(crate) fn has_type_check(ty: &syn::Type) -> bool {
 /// repeat them, so dropping them would change what the function accepts.
 ///
 /// `no_na` also has a Rust half. A type can read more inputs as missing than
-/// `anyNA()` sees (the reading markers `AsNumeric*` / `AsCharacter*` read the
+/// `anyNA()` sees (the reading markers `AsNumeric*` / `AsInteger*` / `AsCharacter*` read the
 /// text `"NA"`, blank strings, a factor `NA` level as `NA`), so the C wrapper
 /// checks the converted value too (`TryFromSexp::__mx_has_na`, see
 /// `RustConversionBuilder::with_no_na`) and raises the same condition with
@@ -650,7 +650,7 @@ pub(crate) fn no_na_message(param: &str, ty: &syn::Type, custom: Option<&str>) -
 /// failure reads `must not contain NA` rather than `must not be NA`.
 ///
 /// The type table decides when it knows the type ([`RTypeCheck::is_vector`]):
-/// `Vec<T>` and slices, the vector markers (`AsNumericVec`, `AsCharacterVec`,
+/// `Vec<T>` and slices, the vector markers (`AsNumericVec`, `AsIntegerVec`, `AsCharacterVec`,
 /// any marker whose table entry is a vector check), maps and lists. For a type the
 /// table does not know, the shape decides: `Vec<T>`, `Box<[T]>`, slices and
 /// arrays, and a type named `...Vec` (the vector half of a marker family such
@@ -755,6 +755,12 @@ enum RTypeCheck {
     ScalarNumericOrText,
     /// `AsNumericVec`: numeric, logical, character, or factor (1 assertion).
     VectorNumericOrText,
+    /// `AsInteger` scalar: the [`RTypeCheck::ScalarNumericOrText`] gate. The
+    /// marker reads what `as.integer()` reads and refuses in Rust what it
+    /// would truncate or make `NA`; only the conversion's expectation differs.
+    ScalarIntegerOrText,
+    /// `AsIntegerVec`: the [`RTypeCheck::VectorNumericOrText`] gate.
+    VectorIntegerOrText,
     /// Nullable wrapper around an inner check: prepends `is.null(x) ||` to each assertion
     /// and adjusts messages to mention NULL. Around a scalar check a plain
     /// `NA` passes too (`is.null(x) || (is.logical(x) && length(x) == 1L &&
@@ -797,7 +803,7 @@ fn integer_vector_wide_check(param: &str) -> String {
     )
 }
 
-/// Build the predicate for the `AsNumeric` / `AsNumericVec` markers.
+/// Build the predicate for the `AsNumeric*` / `AsInteger*` markers.
 ///
 /// `is.numeric()` is `FALSE` for a factor, so `is.factor()` is listed on its
 /// own: the marker reads a factor by its labels. Raw and complex stay out, as
@@ -910,7 +916,7 @@ impl RTypeCheck {
                 format!("must be {r_type}"),
                 format!("is.{r_type}({param})"),
             )],
-            RTypeCheck::ScalarNumericOrText => vec![
+            RTypeCheck::ScalarNumericOrText | RTypeCheck::ScalarIntegerOrText => vec![
                 RAssertion::new(
                     param,
                     "must be numeric, logical, character, or factor",
@@ -918,11 +924,13 @@ impl RTypeCheck {
                 ),
                 length_one(),
             ],
-            RTypeCheck::VectorNumericOrText => vec![RAssertion::new(
-                param,
-                "must be numeric, logical, character, or factor",
-                numeric_or_text_check(param),
-            )],
+            RTypeCheck::VectorNumericOrText | RTypeCheck::VectorIntegerOrText => {
+                vec![RAssertion::new(
+                    param,
+                    "must be numeric, logical, character, or factor",
+                    numeric_or_text_check(param),
+                )]
+            }
             RTypeCheck::Nullable(inner) => {
                 // An optional scalar reads a plain `NA` as `None` (#2305).
                 let plain_na = inner.is_scalar();
@@ -957,13 +965,15 @@ impl RTypeCheck {
             | RTypeCheck::VectorNonNegIntegerWide
             | RTypeCheck::Vector(_)
             | RTypeCheck::VectorNumericOrText
+            | RTypeCheck::VectorIntegerOrText
             | RTypeCheck::List => true,
             RTypeCheck::ScalarNumeric
             | RTypeCheck::ScalarLogicalOrInteger
             | RTypeCheck::ScalarIntegerWide
             | RTypeCheck::ScalarNonNeg
             | RTypeCheck::Scalar(_)
-            | RTypeCheck::ScalarNumericOrText => false,
+            | RTypeCheck::ScalarNumericOrText
+            | RTypeCheck::ScalarIntegerOrText => false,
             // One value, but no atomic one: see `is_scalar`.
             RTypeCheck::Function => false,
             RTypeCheck::Nullable(inner) => inner.is_vector(),
@@ -986,7 +996,8 @@ impl RTypeCheck {
     /// a conversion failure names the whole expectation once. Scalars read
     /// `a single <noun>` (`a single integer`, `a single string`, `TRUE or
     /// FALSE`), vectors name the R type (`numeric`, `character`, `a list`).
-    /// `AsNumeric` / `AsNumericVec` say `a single number` / `numeric`, the
+    /// `AsNumeric` / `AsNumericVec` say `a single number` / `numeric`, and
+    /// `AsInteger` / `AsIntegerVec` `a single whole number` / `integer`: the
     /// value they produce, rather than the inputs they read. `AsCharacter` /
     /// `AsCharacterVec` likewise say `coercible to a single string` /
     /// `coercible to character`: their R-side check has already required an
@@ -997,7 +1008,9 @@ impl RTypeCheck {
             RTypeCheck::ScalarNumeric | RTypeCheck::ScalarNumericOrText => "a single number".into(),
             RTypeCheck::ScalarLogicalOrInteger => "a single logical or integer".into(),
             RTypeCheck::VectorLogicalOrInteger => "logical or integer".into(),
-            RTypeCheck::ScalarIntegerWide => "a single whole number".into(),
+            RTypeCheck::ScalarIntegerWide | RTypeCheck::ScalarIntegerOrText => {
+                "a single whole number".into()
+            }
             RTypeCheck::ScalarNonNeg => "a single non-negative number".into(),
             RTypeCheck::Scalar(r_type) => match *r_type {
                 "logical" => "TRUE or FALSE".into(),
@@ -1008,7 +1021,7 @@ impl RTypeCheck {
                 other => format!("a single {other} value"),
             },
             RTypeCheck::VectorNumeric | RTypeCheck::VectorNumericOrText => "numeric".into(),
-            RTypeCheck::VectorIntegerStrict => "integer".into(),
+            RTypeCheck::VectorIntegerStrict | RTypeCheck::VectorIntegerOrText => "integer".into(),
             RTypeCheck::VectorIntegerWide => "integer or whole-number numeric".into(),
             RTypeCheck::VectorNonNegIntegerWide => {
                 "non-negative integer or whole-number numeric".into()
@@ -1201,6 +1214,9 @@ fn r_check_for_type_path(type_path: &syn::TypePath) -> Option<RTypeCheck> {
         // `as.numeric()`-style markers: numbers, text, and factor labels.
         "AsNumeric" => Some(RTypeCheck::ScalarNumericOrText),
         "AsNumericVec" => Some(RTypeCheck::VectorNumericOrText),
+        // `as.integer()`-style markers: the same inputs, stored as integers.
+        "AsInteger" => Some(RTypeCheck::ScalarIntegerOrText),
+        "AsIntegerVec" => Some(RTypeCheck::VectorIntegerOrText),
 
         // `as.character()`-style markers: any atomic vector (a list or data
         // frame is refused, as `as.character()` would flatten it), with length

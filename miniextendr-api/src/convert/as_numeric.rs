@@ -126,7 +126,7 @@ impl TryFromSexp for AsNumericVec {
     }
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        read_numeric(sexp).map(AsNumericVec)
+        read_numeric::<f64>(sexp).map(AsNumericVec)
     }
 }
 
@@ -140,17 +140,7 @@ impl TryFromSexp for AsNumeric {
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // The type is checked before the length, so a length-1 list reports
         // its type rather than passing the length check.
-        check_type(sexp.type_of())?;
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-        let values = read_numeric(sexp)?;
-        Ok(AsNumeric(values[0]))
+        read_scalar::<f64>(sexp).map(AsNumeric)
     }
 }
 
@@ -219,76 +209,158 @@ impl_option_into_r_null!(AsNumericVec);
 
 // region: SEXP dispatch
 
-/// A value that `as.numeric()` would turn into `NA` with a coercion warning.
-struct NotNumeric;
+/// What a reading marker stores: `f64` for [`AsNumeric`], `i32` for
+/// [`AsInteger`](super::AsInteger). The reader below is shared; only the step
+/// from a number to the stored value, and the words of a refusal, differ.
+pub(super) trait ReadNumber: Copy {
+    /// The storage named when an input type is refused.
+    const STORAGE: SEXPTYPE;
+    /// What a refused value is called: `non-numeric value(s): ...`.
+    const REFUSED: &'static str;
+    /// The stored value of a number that is not `NA`: a double, a widened
+    /// integer or logical, or parsed text. `Ok(None)` reads it as missing.
+    fn from_number(value: f64) -> Result<Option<Self>, Refused>;
+}
+
+impl ReadNumber for f64 {
+    const STORAGE: SEXPTYPE = SEXPTYPE::REALSXP;
+    const REFUSED: &'static str = "non-numeric";
+    #[inline]
+    fn from_number(value: f64) -> Result<Option<Self>, Refused> {
+        Ok(Some(value))
+    }
+}
+
+/// A value the marker can't store: `as.numeric()` would turn it into `NA`
+/// with a coercion warning (and, for an integer, `as.integer()` would also
+/// truncate it).
+pub(super) struct Refused;
 
 /// The rejected-element accumulator: 0-based index and the offending text.
 type Rejected = BatchedErrors;
 
-/// Refuse every SEXPTYPE the markers do not read. `REALSXP` is named as the
-/// expected type because that is the storage the value ends up in.
-fn check_type(actual: SEXPTYPE) -> Result<(), SexpError> {
+/// Refuse every SEXPTYPE the markers do not read, naming `T`'s storage as the
+/// expected type.
+fn check_type<T: ReadNumber>(actual: SEXPTYPE) -> Result<(), SexpError> {
     match actual {
         SEXPTYPE::REALSXP | SEXPTYPE::INTSXP | SEXPTYPE::LGLSXP | SEXPTYPE::STRSXP => Ok(()),
         _ => Err(SexpTypeError {
-            expected: SEXPTYPE::REALSXP,
+            expected: T::STORAGE,
             actual,
         }
         .into()),
     }
 }
 
-/// Read any accepted input into `Vec<Option<f64>>`, collecting every
-/// non-numeric element into one error.
-fn read_numeric(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
+/// Read a scalar marker's value: an accepted type (checked before the length,
+/// so a length-1 list reports its type) of length 1.
+pub(super) fn read_scalar<T: ReadNumber>(sexp: SEXP) -> Result<Option<T>, SexpError> {
+    check_type::<T>(sexp.type_of())?;
+    let len = sexp.len();
+    if len != 1 {
+        return Err(SexpLengthError {
+            expected: 1,
+            actual: len,
+        }
+        .into());
+    }
+    Ok(read_numeric::<T>(sexp)?[0])
+}
+
+/// Read any accepted input into `Vec<Option<T>>`, collecting every refused
+/// element into one error.
+pub(super) fn read_numeric<T: ReadNumber>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError> {
     let actual = sexp.type_of();
-    check_type(actual)?;
-    match actual {
+    check_type::<T>(actual)?;
+    let mut rejected = Rejected::default();
+    let values = match actual {
         SEXPTYPE::REALSXP => {
             let values: &[f64] = unsafe { sexp.as_slice() };
-            Ok(values.iter().map(|&v| (!v.is_na()).then_some(v)).collect())
+            values
+                .iter()
+                .enumerate()
+                .map(|(i, &v)| {
+                    if v.is_na() {
+                        return None;
+                    }
+                    T::from_number(v).unwrap_or_else(|Refused| {
+                        // As R prints it: at most 15 significant digits,
+                        // fixed unless scientific is shorter (`3.5`, `Inf`,
+                        // `2147483648`, `3e+10`, `1e-300`).
+                        rejected.push(i, || {
+                            if v.is_infinite() {
+                                return if v > 0.0 { "Inf" } else { "-Inf" }.to_string();
+                            }
+                            let sci = format!("{v:.14e}");
+                            let (mantissa, exp) =
+                                sci.split_once('e').expect("`{:e}` writes an exponent");
+                            let mantissa = mantissa.trim_end_matches('0').trim_end_matches('.');
+                            let exp: i32 = exp.parse().expect("`{:e}` writes an integer exponent");
+                            let digits = mantissa.bytes().filter(u8::is_ascii_digit).count();
+                            let digits = i32::try_from(digits).expect("at most 15 digits");
+                            let decimals = usize::try_from(digits - 1 - exp).unwrap_or(0);
+                            let fixed = format!("{v:.decimals$}");
+                            let sign = if exp < 0 { '-' } else { '+' };
+                            let sci = format!("{mantissa}e{sign}{:02}", exp.unsigned_abs());
+                            if fixed.len() <= sci.len() { fixed } else { sci }
+                        });
+                        None
+                    })
+                })
+                .collect()
         }
-        SEXPTYPE::INTSXP if sexp.is_factor() => read_factor_labels(sexp),
+        SEXPTYPE::INTSXP if sexp.is_factor() => return read_factor_labels::<T>(sexp),
         SEXPTYPE::INTSXP => {
             let values: &[i32] = unsafe { sexp.as_slice() };
-            Ok(values
+            values
                 .iter()
-                .map(|&v| (!v.is_na()).then(|| f64::from(v)))
-                .collect())
+                .map(|&v| {
+                    if v.is_na() {
+                        return None;
+                    }
+                    T::from_number(f64::from(v)).unwrap_or_else(|Refused| {
+                        unreachable!("an R integer is stored by every marker")
+                    })
+                })
+                .collect()
         }
         SEXPTYPE::LGLSXP => {
             let values: &[RLogical] = unsafe { sexp.as_slice() };
-            Ok(values
+            values
                 .iter()
-                .map(|v| (!v.is_na()).then(|| f64::from(v.to_i32())))
-                .collect())
+                .map(|v| {
+                    if v.is_na() {
+                        return None;
+                    }
+                    T::from_number(f64::from(v.to_i32())).unwrap_or_else(|Refused| {
+                        unreachable!("an R logical is stored by every marker")
+                    })
+                })
+                .collect()
         }
         // STRSXP: `check_type` admitted nothing else.
-        _ => {
-            let mut rejected = Rejected::default();
-            let values = map_strsxp_with(sexp, |charsxp, i| {
-                Ok(parse_charsxp(charsxp).unwrap_or_else(|NotNumeric| {
-                    rejected.push(i, || unsafe { charsxp_to_cow_lossy(charsxp) }.into_owned());
-                    None
-                }))
-            })?;
-            finish(values, rejected)
-        }
-    }
+        _ => map_strsxp_with(sexp, |charsxp, i| {
+            Ok(parse_charsxp::<T>(charsxp).unwrap_or_else(|Refused| {
+                rejected.push(i, || unsafe { charsxp_to_cow_lossy(charsxp) }.into_owned());
+                None
+            }))
+        })?,
+    };
+    finish::<T>(values, rejected)
 }
 
 /// Read a factor by its labels: each level is parsed once, then every code
 /// looks its level up. Code `NA` is `None`; a code outside the levels is a
 /// malformed factor (R's `as.character()` refuses it too).
-fn read_factor_labels(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
+fn read_factor_labels<T: ReadNumber>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError> {
     let levels = sexp.get_levels();
     if levels.type_of() != SEXPTYPE::STRSXP {
         return Err(SexpError::InvalidValue(
             "malformed factor: levels are not a character vector".to_string(),
         ));
     }
-    let parsed: Vec<Result<Option<f64>, NotNumeric>> =
-        map_strsxp_with(levels, |charsxp, _| Ok(parse_charsxp(charsxp)))?;
+    let parsed: Vec<Result<Option<T>, Refused>> =
+        map_strsxp_with(levels, |charsxp, _| Ok(parse_charsxp::<T>(charsxp)))?;
 
     let codes: &[i32] = unsafe { sexp.as_slice() };
     let mut values = Vec::with_capacity(codes.len());
@@ -311,37 +383,41 @@ fn read_factor_labels(sexp: SEXP) -> Result<Vec<Option<f64>>, SexpError> {
         };
         match parsed[k] {
             Ok(v) => values.push(v),
-            Err(NotNumeric) => {
+            Err(Refused) => {
                 rejected.push(i, || level_label(levels, k));
                 values.push(None);
             }
         }
     }
-    finish(values, rejected)
+    finish::<T>(values, rejected)
 }
 
 /// The text of level `k` (0-based) of a factor's `levels` STRSXP.
 fn level_label(levels: SEXP, k: usize) -> String {
     let charsxp = levels.string_elt(isize::try_from(k).expect("level index fits in R_xlen_t"));
-    // A rejected label is never `NA_character_` (that parses as `None`). One
+    // A rejected label is never `NA_character_` (that reads as `None`). One
     // marked as bytes is shown lossily.
     unsafe { charsxp_to_cow_lossy(charsxp) }.into_owned()
 }
 
 /// Return the values, or the one batched error naming every rejected element.
-fn finish(values: Vec<Option<f64>>, rejected: Rejected) -> Result<Vec<Option<f64>>, SexpError> {
+fn finish<T: ReadNumber>(
+    values: Vec<Option<T>>,
+    rejected: Rejected,
+) -> Result<Vec<Option<T>>, SexpError> {
     if rejected.is_empty() {
         Ok(values)
     } else {
-        Err(rejected.into_value_error("non-numeric"))
+        Err(rejected.into_value_error(T::REFUSED))
     }
 }
 // endregion
 
 // region: String parsing (R's `String2Real`)
 
-/// Parse one CHARSXP the way `as.numeric()` does.
-fn parse_charsxp(charsxp: SEXP) -> Result<Option<f64>, NotNumeric> {
+/// Read one CHARSXP the way `as.numeric()` parses it, then store the number
+/// as `T`.
+fn parse_charsxp<T: ReadNumber>(charsxp: SEXP) -> Result<Option<T>, Refused> {
     if charsxp == SEXP::na_string() {
         return Ok(None);
     }
@@ -349,8 +425,11 @@ fn parse_charsxp(charsxp: SEXP) -> Result<Option<f64>, NotNumeric> {
     // number, as `as.numeric()` reads it: R gives `NA` with a coercion warning.
     // SAFETY: a non-NA CHARSXP; its data, or R's UTF-8 translation of it, is
     // NUL-terminated, which is what `parse_nul_terminated` needs.
-    let text = unsafe { try_charsxp_to_str(charsxp) }.map_err(|_| NotNumeric)?;
-    unsafe { parse_nul_terminated(text) }
+    let text = unsafe { try_charsxp_to_str(charsxp) }.map_err(|_| Refused)?;
+    match unsafe { parse_nul_terminated(text) }? {
+        Some(value) => T::from_number(value),
+        None => Ok(None),
+    }
 }
 
 /// Parse `s` as R's `RealFromString` does, plus the `"NA"` token.
@@ -359,7 +438,7 @@ fn parse_charsxp(charsxp: SEXP) -> Result<Option<f64>, NotNumeric> {
 ///
 /// The byte after `s` must be NUL (R's `CHAR()` data is), because `R_strtod`
 /// reads a C string.
-unsafe fn parse_nul_terminated(s: &str) -> Result<Option<f64>, NotNumeric> {
+unsafe fn parse_nul_terminated(s: &str) -> Result<Option<f64>, Refused> {
     // Also covers `""`, whose `as_ptr()` would not point at R's data.
     if is_blank(s) || is_na_token(s) {
         return Ok(None);
@@ -378,7 +457,7 @@ unsafe fn parse_nul_terminated(s: &str) -> Result<Option<f64>, NotNumeric> {
     if rest_blank {
         Ok(Some(value))
     } else {
-        Err(NotNumeric)
+        Err(Refused)
     }
 }
 

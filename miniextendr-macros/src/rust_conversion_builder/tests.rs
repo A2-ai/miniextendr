@@ -251,6 +251,8 @@ fn test_conversion_err_arm_states_the_r_expectation() {
     for (src, prefix) in [
         ("dv: AsNumericVec", "'dv' must be numeric"),
         ("num: AsNumeric", "'num' must be a single number"),
+        ("ids: AsIntegerVec", "'ids' must be integer"),
+        ("id: AsInteger", "'id' must be a single whole number"),
         ("x: i32", "'x' must be a single integer"),
         ("x: Option<f64>", "'x' must be NULL or a single double"),
         ("x: Nullable<f64>", "'x' must be NULL or a single double"),
@@ -940,6 +942,8 @@ fn no_na_checks_the_converted_value() {
     for (src, message) in [
         ("x: AsNumeric", "'x' must not be NA"),
         ("x: AsNumericVec", "'x' must not contain NA"),
+        ("x: AsInteger", "'x' must not be NA"),
+        ("x: AsIntegerVec", "'x' must not contain NA"),
         ("x: Option<AsCharacterVec>", "'x' must not contain NA"),
         ("_x: Missing<AsCharacter>", "'x' must not be NA"),
     ] {

@@ -34,7 +34,8 @@ No integer conversion reads a factor, whose values are level codes. `i32`,
 numeric types (`i64`, `Vec<i64>`, `Option<u32>`, ...) refuse it with
 `got a factor`, also when the R-side check is off (`no_preconditions`, a
 direct `.Call`). Take the codes with `as.integer(f)` in R, or a numeric label
-such as `"42"` with [AsNumeric](#numbers-from-text-factors-or-numbers-asnumeric).
+such as `"42"` with [AsNumeric](#numbers-from-text-factors-or-numbers-asnumeric)
+or [AsInteger](#integers-from-text-factors-or-numbers-asinteger).
 
 For Rust-to-R returns, `[T; N]` uses the same conversion as `&[T]`, without
 an intermediate Rust allocation. This includes native values, smart integers
@@ -454,6 +455,49 @@ A marker converts to R as its inner `Vec<Option<f64>>` / `Option<f64>`, which
 it reads back unchanged, so a `#[miniextendr]` trait method can take one as a
 parameter (the trait ABI converts each argument both ways). Returning `.0`
 stays the idiom for a function.
+
+### Integers from text, factors, or numbers (`AsInteger`)
+
+`AsIntegerVec` (and the length-1 `AsInteger`) are `AsNumericVec`'s integer
+siblings: they read the same inputs the same way, then store each number as an
+`i32`. Where `as.integer()` would lose information, the marker refuses the
+value: `as.integer(3.5)` truncates to `3`, and `as.integer(3e10)` gives `NA`
+with a warning.
+
+```rust
+use miniextendr_api::AsIntegerVec;
+
+#[miniextendr]
+pub fn total(x: AsIntegerVec) -> i64 {
+    x.0.into_iter().flatten().map(i64::from).sum()
+}
+```
+
+```r
+total(c(2, NA))                    # 2      whole doubles as is
+total(c(" 1 ", "0x10", "NaN"))     # 17     parsed like as.numeric(); NaN is NA
+total(factor(c("10", "2")))        # 12     factor labels, not codes
+total(c("1", "n/a", "3.5", "1e10"))
+#> Error: ... non-integer value(s): "n/a", "3.5", "1e10" (elements 2, 3, 4)
+total(c(1, 2.5, -2^31))
+#> Error: ... non-integer value(s): "2.5", "-2147483648" (elements 2, 3)
+```
+
+| Input | Result |
+|-------|--------|
+| integer, logical | as is; `NA` → `None` |
+| double | a whole number in R's integer range as is; `NA` and `NaN` → `None` (`as.integer(NaN)` is `NA`) |
+| character | parsed as for `AsNumericVec`, then read as a double |
+| factor | each label (`levels(x)[x]`) read as character; code `NA` → `None` |
+| raw, complex, list, … | refused (R precondition, then `SexpError::Type`) |
+
+R's integer range is `-2147483647` to `2147483647`: `-2147483648` is
+`NA_integer_`'s bit pattern, so it is refused as out of range. Every refused
+value (not a number, not whole, or out of range) is reported in one error, the
+text as given and a double as `as.character()` shows it, with 1-based element
+numbers and at most 10 values listed. `no_na`, `Option` and the trait ABI work
+as for `AsNumeric`; `no_na` also refuses the text `"NaN"`, which the marker
+reads as `None`.
 
 For parsing into an arbitrary `T: FromStr`, use `AsFromStr<T>` /
 `AsFromStrVec<T>`: character input only, `NA` refused, and each failing value

@@ -189,10 +189,10 @@ Vector conversions (`Vec<T>`) follow the same source-type rules as scalars:
 ### Parsing and Reading Markers
 
 Argument markers that read a value the way an R function would (`as.numeric()`,
-`as.character()`), or parse it from its text. Their `IntoR` hands back the inner
+`as.integer()`, `as.character()`), or parse it from its text. Their `IntoR` hands back the inner
 value (`AsFromStr` its `Display` text), which the marker reads back unchanged:
 that is how a `#[miniextendr]` trait method takes a marker parameter through the
-trait ABI. A function returning `AsNumeric*` / `AsCharacter*` gives the same R
+trait ABI. A function returning `AsNumeric*` / `AsInteger*` / `AsCharacter*` gives the same R
 value as returning `.0`; for these, returning `.0` stays the idiom.
 `AsFromStr`'s `IntoR` exists for the trait ABI: to return text, use
 `AsDisplay<T>` / `AsDisplayVec<T>`.
@@ -201,14 +201,17 @@ value as returning `.0`; for these, returning `.0` stays the idiom.
 |-----------|--------------------|------------------|------------|
 | `AsNumericVec` (`.0: Vec<Option<f64>>`) | REALSXP, INTSXP, LGLSXP, STRSXP, factor | Like `as.numeric()`: doubles as is (`NaN` stays `Some(NaN)`), integer/logical widened, character parsed with R's `R_strtod` (surrounding blanks, `Inf`, `NaN`, `1e3`, hex), factor read by its labels, never its codes. NA of any type, blank strings and the token `"NA"` → `None` | One `InvalidValue`: `non-numeric value(s): "n/a", "<0.1" (elements 2, 5)`, 1-based, at most 10 listed then `and N more`. Other types: `SexpError::Type` |
 | `AsNumeric` (`.0: Option<f64>`) | Same, length 1 | Same | Same wording for the one value; wrong length: `SexpError::Length` |
+| `AsIntegerVec` (`.0: Vec<Option<i32>>`) | REALSXP, INTSXP, LGLSXP, STRSXP, factor | Like `as.integer()`, read as `AsNumericVec` reads (text and factor labels included), then stored as `i32`: integer/logical as is, a whole double in R's integer range as is, `NaN` → `None` (as `as.integer(NaN)`). NA of any type, blank strings and the tokens `"NA"` / `"NaN"` → `None`. Refused where `as.integer()` would truncate (`3.5`, `"2.5"`) or give `NA` with a warning (`Inf`, `1e10`, `-2^31`, which is `NA_integer_`'s bit pattern) | One `InvalidValue` naming every refused value, text as given and doubles as `as.character()` shows them: `non-integer value(s): "n/a", "3.5", "3e+10" (elements 2, 3, 5)`, 1-based, at most 10 listed then `and N more`. Other types: `SexpError::Type` |
+| `AsInteger` (`.0: Option<i32>`) | Same, length 1 | Same | Same wording for the one value; wrong length: `SexpError::Length` |
 | `AsCharacterVec` (`.0: Vec<Option<String>>`) | Any atomic: LGLSXP, INTSXP, REALSXP, CPLXSXP, STRSXP, RAWSXP (incl. factor, `Date`, `POSIXct`) | Like `as.character()`, with R making the text: a plain vector through `coerceVector()` (`0.1 + 0.2` → `"0.3"`, `1e6` → `"1e+06"`, `TRUE` → `"TRUE"`, `as.raw(255)` → `"ff"`), a classed vector through its `as.character()` method (factor labels, formatted dates), whose warnings and messages reach the caller's handlers. NA of any type → `None`; `"NA"`, `""` and `"NaN"` stay strings. Names and `dim` dropped | Non-atomic input: `SexpError::Type`. A failing method: `InvalidValue` (`as.character() failed: ...`); a method returning non-character: `InvalidValue` |
 | `AsCharacter` (`.0: Option<String>`) | Same, length 1 | Same | Same; wrong length (of the argument or of the method's result): `SexpError::Length` |
 | `AsFromStrVec<T: FromStr>` | STRSXP only | `str::parse` per element | One batched `InvalidValue`, 1-based: `"n/a": <err> (element 2); NA is not allowed (element 3)` |
 | `AsFromStr<T: FromStr>` | STRSXP, length 1 | `str::parse` | `"n/a": <err>`; `NA_character_` → `SexpError::Na` |
 
-The generated R precondition for `AsNumeric` / `AsNumericVec` is
+The generated R precondition for `AsNumeric` / `AsNumericVec` (and
+`AsInteger` / `AsIntegerVec`, which read the same inputs) is
 `is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)` ("'x' must
-be numeric, logical, character, or factor"; plus length 1 for `AsNumeric`, and
+be numeric, logical, character, or factor"; plus length 1 for `AsNumeric` and `AsInteger`, and
 `is.null(x) ||` under `Option<…>`, which for `AsNumeric` also passes a plain
 `NA`, #2305: `Option<AsNumeric>` reads it as `Some(AsNumeric(None))`, the
 marker's own `NA`). For `AsCharacter` / `AsCharacterVec` it is
@@ -217,10 +220,11 @@ marker's own `NA`). For `AsCharacter` / `AsCharacterVec` it is
 `AsFromStrVec` have no R precondition; their errors come from the conversion.
 Either way the argument error is the same condition (#1591); a conversion
 failure reads `'dv' must be numeric: non-numeric value(s): "BLQ" (element 2)`
-(`a single number` for `AsNumeric`), with the Rust type in `e$rust_type`
+(`a single number` for `AsNumeric`; `integer` / `a single whole number` for
+`AsIntegerVec` / `AsInteger`), with the Rust type in `e$rust_type`
 ([ERROR_HANDLING.md](ERROR_HANDLING.md#type-conversion-errors)).
 
-`#[miniextendr(no_na)]` on these four markers is also a post-conversion check:
+`#[miniextendr(no_na)]` on these reading markers is also a post-conversion check:
 the R guard `!anyNA(x)` runs first, then the C wrapper asks the converted value
 and refuses what the marker read as `None` (`"NA"`, blank strings, a factor
 `NA` level, an `NA` from a class's `as.character()`), plus `NaN` for
@@ -352,7 +356,7 @@ the moment it sees `NULL` instead.
 | `Option<&str>` | `NA_character_` | `is.na(x)` | **Exception** to the `Option<&T>` row below: `str` is unsized, so it cannot use the generic `Copy`-bounded blanket impl. It has a hand-written impl instead that deliberately mirrors `Option<String>`. |
 | `Option<&T>` where `T: Copy` (e.g. `Option<&i32>`, `Option<&f64>`, `Option<&bool>`) | `NULL` | `is.null(x)` | A borrowed reference has nothing to copy on `None` — there is no NA representation for "no reference" |
 | `Option<Vec<T>>` / `Option<Box<[T]>>` (any `T` with `Vec<T>: IntoR`) / `Option<[T; N]>` (any `T` with `&[T]: IntoR`) / `Option<HashMap<String, V>>` / `Option<BTreeMap<String, V>>` / `Option<HashSet<T>>` / `Option<BTreeSet<T>>` | `NULL` | `is.null(x)` | No container type has a native R NA sentinel |
-| `Option<AsNumeric>` / `Option<AsNumericVec>` / `Option<AsCharacter>` / `Option<AsCharacterVec>` | `NULL` | `is.null(x)` | `NA` is already `Some(marker(None))`; `NULL` is what the marker's `Option` reads as `None`. So switching a return from `Option<f64>` to `Option<AsNumeric>` changes `NA` to `NULL` |
+| `Option<AsNumeric>` / `Option<AsNumericVec>` / `Option<AsInteger>` / `Option<AsIntegerVec>` / `Option<AsCharacter>` / `Option<AsCharacterVec>` | `NULL` | `is.null(x)` | `NA` is already `Some(marker(None))`; `NULL` is what the marker's `Option` reads as `None`. So switching a return from `Option<f64>` to `Option<AsNumeric>` changes `NA` to `NULL` |
 | `Option<&[T]>` | `NULL` | `is.null(x)` | `Some` converts as the slice does |
 | `Option<ExternalPtr<T>>` / a method's `Option<Self>` | `NULL` | `is.null(x)` | `Some` is the external pointer, which a method's R wrapper wraps in its class. This is how a class is returned optionally: no `IntoR for Option<Class>` can exist (the orphan rule), so `Option<Class>` doesn't compile, and an explicit class wrap (`Option<WrapAsR6<Class>>`, `wrap = "r6"`) is the other spelling |
 | `Nullable<T>` (any `T: IntoR`) | `NULL` | `is.null(x)` | Not an `Option`: a return type for "no value at all" whatever `T` is. `Some(v)` converts as `v`, so `Nullable<i32>` gives an integer or `NULL` where `Option<i32>` gives `NA_integer_`. `RIterator::next` / `nth` return it, so the end of iteration can't be mistaken for an `NA` item. It reads from R as `Option<T>` does (`NULL` and `NA` are `None`) and serializes as `Option<T>` under `serde`, so it is an `#[r_data]` field type too, as is an `Option<T>` field marked `#[r_data(null_if_none)]` (#2270). A `Nullable<T>` argument behaves exactly as `Option<T>`: the same R-side check and message, and `coerce`, `no_na` and `match_arg` look through it (#2294) |
@@ -543,7 +547,7 @@ not gaps:
 
 By contrast, `Url` and `Uuid` round-trip: both directions are implemented
 because the R representation (a string) is faithful in both directions. The
-reading markers round-trip too: `AsNumeric*` / `AsCharacter*` convert to R as
+reading markers round-trip too: `AsNumeric*` / `AsInteger*` / `AsCharacter*` convert to R as
 their inner value (`NA` for `None`, `NULL` for an `Option<marker>` that is
 `None`), and `AsFromStr<T>` / `AsFromStrVec<T>` as their `Display` text, which
 reads back unchanged when `T::from_str(&t.to_string()) == t`.

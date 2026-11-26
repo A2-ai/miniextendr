@@ -811,9 +811,10 @@ pub mod strvec;
 pub mod typed_list;
 pub use convert::{
     AsCharacter, AsCharacterVec, AsDataFrame, AsDataFrameExt, AsDisplay, AsDisplayVec,
-    AsExternalPtr, AsExternalPtrExt, AsFromStr, AsFromStrVec, AsList, AsListExt, AsNamedList,
-    AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsNumeric, AsNumericVec, AsRNative,
-    AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings, ColumnSource,
+    AsExternalPtr, AsExternalPtrExt, AsFromStr, AsFromStrVec, AsInteger, AsIntegerVec, AsList,
+    AsListExt, AsNamedList, AsNamedListExt, AsNamedVector, AsNamedVectorExt, AsNumeric,
+    AsNumericVec, AsRNative, AsRNativeExt, Collect, CollectNA, CollectNAInt, CollectStrings,
+    ColumnSource,
 };
 #[cfg(feature = "vctrs")]
 pub use convert::{AsVctrs, AsVctrsExt};

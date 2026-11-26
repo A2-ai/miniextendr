@@ -1,8 +1,10 @@
 //! Test fixtures for AsDisplay, AsDisplayVec, AsFromStr, AsFromStrVec wrappers,
-//! and the `as.numeric()`-style AsNumeric / AsNumericVec markers.
+//! and the `as.numeric()`-style AsNumeric / AsNumericVec and `as.integer()`-style
+//! AsInteger / AsIntegerVec markers.
 
 use miniextendr_api::convert::{
-    AsDisplay, AsDisplayVec, AsFromStr, AsFromStrVec, AsNumeric, AsNumericVec,
+    AsDisplay, AsDisplayVec, AsFromStr, AsFromStrVec, AsInteger, AsIntegerVec, AsNumeric,
+    AsNumericVec,
 };
 use miniextendr_api::miniextendr;
 use std::net::IpAddr;
@@ -94,6 +96,32 @@ pub fn test_as_numeric(x: AsNumeric) -> Option<f64> {
 #[miniextendr(noexport)]
 pub fn test_as_numeric_opt(x: Option<AsNumeric>) -> Option<f64> {
     x.and_then(|v| v.0)
+}
+
+// endregion
+
+// region: AsInteger / AsIntegerVec — the same inputs → i32, refusing fractions and out-of-range values
+
+#[miniextendr(noexport)]
+pub fn test_as_integer_vec(x: AsIntegerVec) -> Vec<Option<i32>> {
+    x.0
+}
+
+#[miniextendr(noexport)]
+pub fn test_as_integer(x: AsInteger) -> Option<i32> {
+    x.0
+}
+
+/// `NULL` and `NA` both come back as `NA_integer_`.
+#[miniextendr(noexport)]
+pub fn test_as_integer_opt(x: Option<AsInteger>) -> Option<i32> {
+    x.and_then(|v| v.0)
+}
+
+/// `no_na` refuses what the marker reads as missing (`"NA"`, `"NaN"`, `""`).
+#[miniextendr(noexport)]
+pub fn test_as_integer_no_na(#[miniextendr(no_na)] x: AsIntegerVec) -> Vec<Option<i32>> {
+    x.0
 }
 
 // endregion

@@ -89,7 +89,8 @@
 //! Bare `f64`, `i32` and `bool` (and their `Vec`s) are strict: each reads one
 //! R type (`f64` only doubles, `i32` only integers), so they never overlap.
 //! Only a widening arm does: [`AsNumeric`](crate::AsNumeric) /
-//! [`AsNumericVec`](crate::AsNumericVec), or a scalar `i64`, `u32`, `f32` and
+//! [`AsNumericVec`](crate::AsNumericVec), [`AsInteger`](crate::AsInteger) /
+//! [`AsIntegerVec`](crate::AsIntegerVec), or a scalar `i64`, `u32`, `f32` and
 //! the like, which read integer, double, logical and raw input.
 //! `#[miniextendr(coerce)]` / `coerce-default` do not widen an `Either`'s arms.
 //!
@@ -102,6 +103,7 @@
 //! | `Either<f64, bool>` | OK as-is | Disjoint R types: a bare `f64` refuses logicals |
 //! | `Either<i32, bool>` | OK as-is | Disjoint R types: a bare `i32` refuses logicals |
 //! | `Either<AsNumeric, i32>` | `Either<i32, AsNumeric>` | `AsNumeric` reads integers too |
+//! | `Either<AsInteger, String>` | `Either<String, AsInteger>` | `AsInteger` reads text too |
 //! | `Either<i64, bool>` | `Either<bool, i64>` | `i64` reads logicals too |
 //! | `Either<String, i32>` | OK as-is | Disjoint R types |
 //! | `Either<Vec<T>, T>` | `Either<T, Vec<T>>` | Scalar matches length-1 vector |

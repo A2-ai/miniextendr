@@ -191,7 +191,7 @@ propagate from Rust's `TryFromSexp`, as the same argument-error condition
 (#1591), but worded by the conversion (`'x' must be a single integer: got
 character`) rather than by the R check (`'x' must be integer`). Checks named
 per parameter (`inherits`, `not_inherits`, `no_na`) are kept: the Rust conversion does not
-repeat them. `no_na` on the reading markers (`AsNumeric*`, `AsCharacter*`)
+repeat them. `no_na` on the reading markers (`AsNumeric*`, `AsInteger*`, `AsCharacter*`)
 also checks the converted value, and that check stays too.
 
 The feature does not touch the call a wrapper reports: every wrapper passes

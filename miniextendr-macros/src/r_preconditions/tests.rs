@@ -381,6 +381,12 @@ fn conversion_expectation_follows_the_type_check() {
         exp("Option<AsNumeric>", false),
         some("NULL or a single number")
     );
+    assert_eq!(exp("AsIntegerVec", false), some("integer"));
+    assert_eq!(exp("AsInteger", false), some("a single whole number"));
+    assert_eq!(
+        exp("Option<AsInteger>", false),
+        some("NULL or a single whole number")
+    );
     assert_eq!(exp("i32", false), some("a single integer"));
     assert_eq!(exp("i32", true), some("a single whole number"));
     assert_eq!(exp("f64", false), some("a single double"));
@@ -583,6 +589,7 @@ fn optional_scalars_pass_a_plain_na() {
         "Option<u8>",
         "Option<Rcomplex>",
         "Option<AsNumeric>",
+        "Option<AsInteger>",
         "Option<AsCharacter>",
         "Nullable<i32>",
         "Nullable<String>",
@@ -621,6 +628,10 @@ fn optional_vectors_do_not_pass_a_plain_na() {
         ("Option<List>", "is.null(x) || is.list(x)"),
         (
             "Option<AsNumericVec>",
+            "is.null(x) || is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)",
+        ),
+        (
+            "Option<AsIntegerVec>",
             "is.null(x) || is.numeric(x) || is.logical(x) || is.character(x) || is.factor(x)",
         ),
     ] {

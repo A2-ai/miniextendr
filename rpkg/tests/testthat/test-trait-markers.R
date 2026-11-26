@@ -41,6 +41,15 @@ test_that("a trait method parses AsFromStr and returns a marker", {
   expect_identical(marker_call("marker_echo", value = c("1", "NA", "NaN")), c(1, NA, NaN))
 })
 
+test_that("a trait method reads AsIntegerVec and returns it", {
+  expect_identical(marker_call("marker_counts", value = c("1", "NA", "3")), c(1L, NA, 3L))
+  expect_identical(marker_call("marker_counts", value = factor(c("7", "2"))), c(7L, 2L))
+  expect_identical(
+    caught_msg(marker_call("marker_counts", value = c(1, 2.5))),
+    "'value' must be integer: non-integer value(s): \"2.5\" (element 2)"
+  )
+})
+
 test_that("no_na on a trait method checks what the marker reads as NA", {
   expect_identical(marker_call("marker_dose", value = " 2 "), 2)
   for (v in list("NA", factor(""))) {
@@ -60,7 +69,7 @@ test_that("marker arguments cross the trait ABI as their inner value", {
     marker_args_through_view(),
     c(
       "2.5", "NA", "NaN", "2", "NA", "<NA>", "null", "a,<NA>", "absent", "1",
-      "127.0.0.1", "2", "1,NA,NaN"
+      "127.0.0.1", "2", "1,NA,NaN", "4,NA,2147483647"
     )
   )
 })
