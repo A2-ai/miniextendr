@@ -548,6 +548,11 @@ struct Step {
 The companion stores the enum values themselves, so the enum needs neither
 `Clone` nor `Copy`. A struct's factor column has no missing rows, so its reader
 checks the factor's levels and reports every `NA` or invalid code in one error.
+A struct field written `Option<Direction>` makes the column NA-able: `None` is
+an `NA` code, and the reader reads `NA` back as `None` and reports every
+invalid code. An enum variant's factor field can't be an `Option`: rows of the
+other variants already fill its column with `NA`, so `None` could not be told
+apart from them, and the derive refuses it at the field.
 The parallel reader delegates to the sequential one, which moves the values, as
 enum readers do for flattened and factor fields. An empty column still carries
 every level. Tuple structs and `#[dataframe(tag)]` structs stay write-only, as

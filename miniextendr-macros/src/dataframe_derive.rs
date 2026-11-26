@@ -945,9 +945,20 @@ struct AutoExpandVecData {
     borrowed: bool,
 }
 
-/// The same `as_factor` shapes are accepted on struct and enum fields. The
-/// generated conversion checks `UnitEnumFactor` on the selected type.
+/// The same `as_factor` shapes are accepted on struct and enum fields: a
+/// bare-ident type, whose `UnitEnumFactor` the generated conversion checks. A
+/// struct field may also be `Option<T>` of one, an NA-able factor column
+/// (#2133); the struct path passes `T`, so an `Option` here is an enum
+/// variant field's, refused at the field.
 fn validate_factor_field_type(ty: &syn::Type) -> syn::Result<()> {
+    if crate::type_inspect::option_inner_type(ty).is_some() {
+        return Err(syn::Error::new_spanned(
+            ty,
+            "`as_factor` on an enum variant field takes the unit enum itself, not \
+             `Option<T>`: the column already holds NA for the rows of the other \
+             variants. An `Option<T>` factor column is for a struct row's field",
+        ));
+    }
     match classify_field_type(ty)? {
         FieldTypeKind::Struct { .. } => Ok(()),
         _ => Err(syn::Error::new_spanned(
@@ -1006,7 +1017,9 @@ fn resolve_struct_field(
     let kind = classify_field_type(ty);
 
     if field_attrs.as_factor {
-        validate_factor_field_type(ty)?;
+        // `Option<T>` is an NA-able factor column (#2133), as `Option<scalar>`
+        // is an NA-able column (#1437).
+        validate_factor_field_type(crate::type_inspect::option_inner_type(ty).unwrap_or(ty))?;
         return Ok(Some(ResolvedField::Single(Box::new(SingleFieldData {
             rust_name,
             col_name,
@@ -1657,10 +1670,18 @@ fn column_sexp(
         quote! { #into_list_column(#access) }
     } else if is_factor {
         let span = syn::spanned::Spanned::span(ty);
-        quote_spanned! {span=>
-            ::miniextendr_api::IntoR::into_sexp(
-                ::miniextendr_api::factor::FactorVec::<#ty>::from(#access)
-            )
+        // An `Option<T>` field writes `None` as `NA` (#2133).
+        match crate::type_inspect::option_inner_type(ty) {
+            Some(level) => quote_spanned! {span=>
+                ::miniextendr_api::IntoR::into_sexp(
+                    ::miniextendr_api::factor::FactorOptionVec::<#level>::from(#access)
+                )
+            },
+            None => quote_spanned! {span=>
+                ::miniextendr_api::IntoR::into_sexp(
+                    ::miniextendr_api::factor::FactorVec::<#ty>::from(#access)
+                )
+            },
         }
     } else {
         quote! { ::miniextendr_api::IntoR::into_sexp(#access) }
@@ -3176,9 +3197,15 @@ fn derive_struct_dataframe(
                         is_factor: bool| {
             let convert = if is_factor {
                 let span = syn::spanned::Spanned::span(elem_ty);
-                quote_spanned! {span=>
-                    <::miniextendr_api::factor::FactorVec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
-                        .map(|values| values.into_inner())
+                // An `Option<T>` field reads `NA` as `None` (#2133).
+                match crate::type_inspect::option_inner_type(elem_ty) {
+                    Some(level) => quote_spanned! {span=>
+                        ::miniextendr_api::factor::unit_factor_option_vec_from_sexp::<#level>(__col_sexp)
+                    },
+                    None => quote_spanned! {span=>
+                        <::miniextendr_api::factor::FactorVec<#elem_ty> as ::miniextendr_api::from_r::TryFromSexp>::try_from_sexp(__col_sexp)
+                            .map(|values| values.into_inner())
+                    },
                 }
             } else {
                 quote! {

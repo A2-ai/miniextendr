@@ -1,0 +1,5 @@
+error: `as_factor` on an enum variant field takes the unit enum itself, not `Option<T>`: the column already holds NA for the rows of the other variants. An `Option<T>` factor column is for a struct row's field
+  --> tests/ui/derive_dataframe_enum_as_factor_option.rs:18:16
+   |
+18 |         level: Option<Level>,
+   |                ^^^^^^^^^^^^^

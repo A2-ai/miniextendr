@@ -30,6 +30,14 @@ pub struct TaggedFactorRow {
     pub level: ReadLevel,
 }
 
+/// An `Option` factor field: `None` is an NA code (#2133).
+#[derive(DataFrameRow)]
+pub struct OptionalFactorRow {
+    pub id: i32,
+    #[dataframe(as_factor)]
+    pub level: Option<ReadLevel>,
+}
+
 /// A struct factor inside an enum variant: the parent pads `Stop` rows with NA.
 #[derive(DataFrameRow)]
 #[dataframe(tag = "kind")]
@@ -55,8 +63,8 @@ pub fn factor_rows(empty: bool) -> Vec<FactorRow> {
         .collect()
 }
 
-/// Build named, tuple, nested, expanded, tagged and enum-variant struct factor
-/// columns.
+/// Build named, tuple, nested, expanded, tagged, optional and enum-variant
+/// struct factor columns.
 #[miniextendr]
 pub fn df_struct_factor(shape: &str, empty: bool) -> BuiltDataFrame {
     let rows = factor_rows(empty);
@@ -93,6 +101,15 @@ pub fn df_struct_factor(shape: &str, empty: bool) -> BuiltDataFrame {
             .collect::<Vec<_>>()
             .into_dataframe()
             .unwrap(),
+        "optional" => rows
+            .into_iter()
+            .map(|r| OptionalFactorRow {
+                id: r.id,
+                level: (r.id != 2).then_some(r.level),
+            })
+            .collect::<Vec<_>>()
+            .into_dataframe()
+            .unwrap(),
         "enum" => rows
             .into_iter()
             .map(|r| match r.id {
@@ -113,6 +130,7 @@ pub fn df_struct_factor_roundtrip(df: SEXP, shape: &str) -> Result<BuiltDataFram
         "named" => FactorRow::try_from_dataframe(df)?.into_dataframe(),
         "nested" => ReadRow::try_from_dataframe(df)?.into_dataframe(),
         "expanded" => ExpandedFactorRow::try_from_dataframe(df)?.into_dataframe(),
+        "optional" => OptionalFactorRow::try_from_dataframe(df)?.into_dataframe(),
         "enum" => FactorEvent::try_from_dataframe(df)?.into_dataframe(),
         _ => panic!("unknown readable fixture shape: {shape}"),
     }
@@ -127,6 +145,7 @@ pub fn df_struct_factor_roundtrip_par(df: SEXP, shape: &str) -> Result<BuiltData
         "named" => FactorRow::try_from_dataframe_par(df)?.into_dataframe_par(),
         "nested" => ReadRow::try_from_dataframe_par(df)?.into_dataframe_par(),
         "expanded" => ExpandedFactorRow::try_from_dataframe_par(df)?.into_dataframe_par(),
+        "optional" => OptionalFactorRow::try_from_dataframe_par(df)?.into_dataframe_par(),
         "enum" => FactorEvent::try_from_dataframe_par(df)?.into_dataframe_par(),
         _ => panic!("unknown readable fixture shape: {shape}"),
     }
