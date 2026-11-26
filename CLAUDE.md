@@ -362,9 +362,11 @@ fixture exercising it?" See #430.
 - `clippy_all_s7`: same list with `full-codegen-s7` (the `s7-default` side of
   the r6/s7 mutex) instead of `full-codegen`
 
-**The feature list is maintained in `.github/workflows/ci.yml` (`clippy_all`
-step) — read it from there.** Hard-coding the list here drifts (it already
-has). `--all-features` does NOT work — `r6-default` and `s7-default` are
+**The feature list is `INTEGRATION_FEATURES` in the top-level `env:` of
+`.github/workflows/ci.yml` — read it from there.** Hard-coding the list here
+drifts (it already has). The Rust tests job runs `miniextendr-api`'s tests
+with the same list plus `nonapi,connections,arrow,log`, so every
+feature-gated test runs somewhere (#2394). `--all-features` does NOT work — `r6-default` and `s7-default` are
 mutually exclusive. CI runs a newer toolchain, so lints like
 `collapsible_match`, `manual_checked_ops` can fire on CI with green local.
 Reproduce all three before pushing.

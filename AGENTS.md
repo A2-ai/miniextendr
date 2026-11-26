@@ -176,7 +176,7 @@ The gctorture-heavy testthat blocks (~32 of the suite's ~34 min) are **opt-in**:
 `just clippy` ≠ CI. Three CI clippy steps must all pass `-D warnings`:
 
 - `clippy_default`: `cargo clippy --workspace --all-targets --locked -- -D warnings`
-- `clippy_all`: same + `full-codegen` and a curated integration feature list — read the list from `.github/workflows/ci.yml` (`clippy_all` step); hard-coding it here drifts (it already has)
+- `clippy_all`: same + `full-codegen` and a curated integration feature list — read the list from `INTEGRATION_FEATURES` in the top-level `env:` of `.github/workflows/ci.yml`; hard-coding it here drifts (it already has). The Rust tests job runs `miniextendr-api`'s tests with the same list plus `nonapi,connections,arrow,log` (#2394)
 - `clippy_all_s7`: same list with `full-codegen-s7` (the `s7-default` mutex side) instead of `full-codegen`
 
 `--all-features` fails (`r6-default` and `s7-default` are mutually exclusive). CI runs a newer toolchain, so lints like `collapsible_match`, `manual_checked_ops` can fire on CI with green local. Reproduce all three before pushing.

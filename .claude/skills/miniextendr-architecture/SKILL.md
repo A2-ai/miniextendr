@@ -326,8 +326,8 @@ framework crates.
 
 - **`--all-features` fails on this workspace**: the `r6-default` and
   `s7-default` features are mutually exclusive. CI's `clippy_all` job uses a
-  curated feature list maintained in `.github/workflows/ci.yml`. Read it from
-  there before reproducing locally.
+  curated feature list, `INTEGRATION_FEATURES` in the top-level `env:` of
+  `.github/workflows/ci.yml`. Read it from there before reproducing locally.
 
 ## Related skills
 

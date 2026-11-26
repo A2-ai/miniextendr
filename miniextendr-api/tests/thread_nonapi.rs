@@ -6,6 +6,7 @@
 
 use std::sync::OnceLock;
 
+use miniextendr_api::sys::nonapi_stack::set_r_cstack_limit;
 use miniextendr_api::thread::{
     RThreadBuilder, StackCheckGuard, get_stack_config, is_stack_checking_disabled,
     with_stack_checking_disabled,
@@ -28,8 +29,8 @@ fn ensure_r_initialized() -> Result<(), String> {
 
                 match result {
                     Ok(_engine) => {
-                        // Initialize miniextendr-api components
-                        miniextendr_api::backtrace::miniextendr_panic_hook();
+                        // No miniextendr panic hook: it silences panic output,
+                        // which here would hide a failed assertion's message.
                         miniextendr_api::miniextendr_runtime_init();
 
                         // Verify R is properly initialized
@@ -55,16 +56,23 @@ fn nonapi_thread_suite() {
         return;
     }
 
-    // Test stack configuration
+    // The engine disables R's stack check before R evaluates anything: R
+    // calibrates the stack for the process's main thread, and the test
+    // harness initializes it on another one.
     let (start, limit, dir) = get_stack_config();
     assert!(dir == -1 || dir == 1, "stack direction should be -1 or 1");
     assert_ne!(start, 0, "stack start should not be zero");
-    assert_ne!(limit, usize::MAX, "stack limit should not be usize::MAX");
+    assert_eq!(limit, usize::MAX, "the engine disables R's stack check");
+    assert!(is_stack_checking_disabled());
 
-    // Test stack checking guard
+    // Give the guard a finite limit to save and restore. No R code runs while
+    // it is set; the engine's setting is put back at the end.
+    const FINITE_LIMIT: usize = 64 << 20;
+    // SAFETY: R is initialized and only this test touches the stack globals.
+    unsafe { set_r_cstack_limit(FINITE_LIMIT) };
     assert!(
         !is_stack_checking_disabled(),
-        "stack checking should be enabled initially"
+        "stack checking should be enabled with a finite limit"
     );
     {
         let _guard = StackCheckGuard::disable();
@@ -81,6 +89,11 @@ fn nonapi_thread_suite() {
         !is_stack_checking_disabled(),
         "stack checking should be re-enabled after guard drops"
     );
+    assert_eq!(
+        get_stack_config().1,
+        FINITE_LIMIT,
+        "the guard should restore the limit it saved"
+    );
 
     // Test with_stack_checking_disabled helper
     let value = with_stack_checking_disabled(|| 123);
@@ -88,6 +101,10 @@ fn nonapi_thread_suite() {
         value, 123,
         "with_stack_checking_disabled should return closure result"
     );
+    assert_eq!(get_stack_config().1, FINITE_LIMIT);
+
+    // SAFETY: as above.
+    unsafe { set_r_cstack_limit(usize::MAX) };
 }
 
 #[test]
