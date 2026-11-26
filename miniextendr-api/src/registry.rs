@@ -1307,7 +1307,8 @@ fn reexport_conflicts(
     }
 }
 
-/// A hand-written R file of the package, as [`reexport_conflicts`] reads it.
+/// A hand-written R file of the package, as [`reexport_conflicts`] and the
+/// unresolved class-reference check of [`write_r_wrappers_to_file`] read it.
 #[cfg(not(target_arch = "wasm32"))]
 struct HandWrittenFile {
     /// The file as messages name it, `R/tidy.R`.
@@ -3065,12 +3066,16 @@ enum ClassRefForm {
 /// `class = "..."` override, else the Rust name), or the [`ClassRefForm`]'s
 /// fallback when none does.
 ///
+/// Also returns the Rust names of the [`ClassRefForm::Loud`] placeholders no
+/// entry registers, in name order: the writer reports the ones the package's
+/// hand-written R files don't bind (#2387).
+///
 /// A linear scan for the sentinel prefix, without a regex dependency.
 #[cfg(not(target_arch = "wasm32"))]
 fn resolve_class_refs(
     content: &str,
     class_index: &std::collections::HashMap<&str, &ClassNameEntry>,
-) -> String {
+) -> (String, std::collections::BTreeSet<String>) {
     const PREFIX: &str = ".__MX_CLASS_REF_";
     const SUFFIX: &str = "__";
     // Both start with `PREFIX`, so they are told apart after it matches.
@@ -3078,6 +3083,7 @@ fn resolve_class_refs(
     const OR_BARE_PREFIX: &str = ".__MX_CLASS_REF_OR_BARE_";
 
     let mut result = String::with_capacity(content.len());
+    let mut unresolved = std::collections::BTreeSet::new();
     let mut remaining = content;
     while let Some(start) = remaining.find(PREFIX) {
         result.push_str(&remaining[..start]);
@@ -3107,16 +3113,13 @@ fn resolve_class_refs(
             (None, ClassRefForm::OrAny) => result.push_str("S7::class_any"),
             (None, ClassRefForm::OrBare) => result.push_str(rust_name),
             (None, ClassRefForm::Loud) => {
-                eprintln!(
-                    "miniextendr: unresolved class reference `{rust_name}` \
-                     in R wrapper — is the class defined in a reachable crate?"
-                );
+                unresolved.insert(rust_name.to_string());
                 result.push_str(rust_name);
             }
         }
     }
     result.push_str(remaining);
-    result
+    (result, unresolved)
 }
 
 /// Resolve scalar `.__MX_WRAP_RETURN_<RustName>__(<expr>)` placeholders
@@ -3905,7 +3908,10 @@ fn append_used_wrapper_helpers(content: &mut String, fragments: &[std::borrow::C
 ///
 /// `r_dir` is the package's `R/` directory. With it, the `reexport!` names
 /// are also checked against the package's hand-written R files (the code
-/// files R installs from `R/`); without it, only against the wrappers.
+/// files R installs from `R/`), and a class reference no Rust type registers
+/// is reported only when none of those files binds the name (#2387); without
+/// it, the names are checked against the wrappers only and every such class
+/// reference is reported.
 ///
 /// Host-only — wasm32 doesn't run wrapper-gen.
 #[cfg(not(target_arch = "wasm32"))]
@@ -3995,11 +4001,14 @@ pub fn write_r_wrappers_to_file(path: &str, r_dir: Option<&str>) {
     }
 
     // Replace the `.__MX_CLASS_REF_*<RustName>__` placeholders with the
-    // registered R class names ([`resolve_class_refs`]).
-    {
+    // registered R class names ([`resolve_class_refs`]). The names no class
+    // registers are checked against the hand-written R files below.
+    let unresolved_class_refs = {
         let class_index = build_class_name_index(MX_CLASS_NAMES.iter());
-        content = resolve_class_refs(&content, &class_index);
-    }
+        let (resolved, unresolved) = resolve_class_refs(&content, &class_index);
+        content = resolved;
+        unresolved
+    };
 
     // Resolve the cross-class return wrapper placeholders: the scalar
     // `.__MX_WRAP_RETURN_<RustName>__(<expr>)` family and the list-shaped
@@ -4064,16 +4073,37 @@ pub fn write_r_wrappers_to_file(path: &str, r_dir: Option<&str>) {
         }
     }
 
-    // Refuse the `reexport!` names the package's wrappers or hand-written R
-    // files bind or export themselves, and a name re-exported from two
-    // packages (#1910, #2205). Like the scan above, it reads the final names.
-    // The R files are read only for a package that re-exports.
+    // The package's hand-written R files, read only for a package that
+    // re-exports or whose wrappers name a class no Rust type registers.
     let hand_written = match r_dir {
-        Some(r_dir) if !MX_REEXPORTS.is_empty() => {
+        Some(r_dir) if !MX_REEXPORTS.is_empty() || !unresolved_class_refs.is_empty() => {
             hand_written_r_files(std::path::Path::new(r_dir), std::path::Path::new(path))
         }
         _ => Vec::new(),
     };
+
+    // A class reference no Rust type registers was written as its bare name.
+    // That is the class when one of the package's R files binds the name at
+    // the top level, such as an abstract S7 parent written in R (#2387);
+    // otherwise the class may be in a crate that isn't linked, so say so.
+    for name in &unresolved_class_refs {
+        let bound = hand_written.iter().any(|file| {
+            file.text
+                .lines()
+                .any(|line| parse_top_level_assignment(line).is_some_and(|(n, _)| n == name))
+        });
+        if !bound {
+            eprintln!(
+                "miniextendr: unresolved class reference `{name}` in R wrapper — is the \
+                 class defined in a reachable crate, or bound at the top level of one of \
+                 the package's R files?"
+            );
+        }
+    }
+
+    // Refuse the `reexport!` names the package's wrappers or hand-written R
+    // files bind or export themselves, and a name re-exported from two
+    // packages (#1910, #2205). Like the scan above, it reads the final names.
     if let Err(msg) = reexport_conflicts(&content, &hand_written, &MX_REEXPORTS) {
         panic!("{msg}");
     }

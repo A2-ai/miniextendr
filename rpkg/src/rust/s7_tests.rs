@@ -421,6 +421,45 @@ impl S7OverrideCircle {
         self.radius
     }
 }
+// endregion
+
+// region: S7 class whose abstract parent is written in R (#2387)
+//
+// `MxS7HandShape` is an abstract S7 class (`abstract = TRUE`) that the package
+// defines in `R/hand_s7_shape.R`, so no Rust type registers it: the wrapper
+// names it as written, and the writer finds the name bound in that file. S7
+// constructs no abstract class, so the subclass constructor passes
+// `S7::S7_object()` to `S7::new_object()` in place of a parent object, as S7's
+// own constructors do.
+
+/// A square whose S7 parent is an abstract class written in R.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct MxS7HandSquare {
+    side: f64,
+}
+
+/// S7 square class whose abstract parent, `MxS7HandShape`, is written in R.
+#[miniextendr(s7(parent = "MxS7HandShape"), internal)]
+impl MxS7HandSquare {
+    /// @param side Numeric side length of the square.
+    pub fn new(side: f64) -> Self {
+        MxS7HandSquare { side }
+    }
+
+    /// Returns the area.
+    pub fn hand_square_area(&self) -> f64 {
+        self.side * self.side
+    }
+
+    /// Returns a square with each side multiplied by `by`.
+    /// @param by Numeric factor.
+    pub fn hand_square_scaled(&self, by: f64) -> Self {
+        MxS7HandSquare {
+            side: self.side * by,
+        }
+    }
+}
+// endregion
 
 // region: Cross-type S7 property class resolution (#154)
 //

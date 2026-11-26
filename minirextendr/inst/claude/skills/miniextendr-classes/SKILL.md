@@ -113,7 +113,12 @@ otherwise.
   that guard and a panicking constructor silently yields a corrupt object.
   Prefer the generated constructors.
 - **S7 parent ordering**: parent classes are emitted before children in the
-  wrappers file automatically.
+  wrappers file automatically. A parent written by hand in R
+  (`s7(parent = "Shape")`, `Shape <- S7::new_class("Shape", abstract = TRUE)`)
+  must be in a file R sources before the wrappers file: without a `Collate`
+  field, R sources the files in name order. Such a parent must be abstract,
+  and its stored properties stay unset, so give it dynamic properties
+  (`new_property(getter = ...)`) only.
 - **vctrs load order**: the generated `@importFrom vctrs ...` lines in
   NAMESPACE force the vctrs DLL to load first. If vctrs dispatch fails,
   check those lines survived your last `document()` run.
