@@ -122,15 +122,17 @@ fn refusals_are_batched() {
         msg,
         r#"non-integer value(s): "n/a", "3.5", "1e10", "-Inf", "-2147483648" (elements 2, 3, 4, 5, 6)"#
     );
-    // Doubles are shown as `as.character()` shows them (R's parser reads
-    // `1e-300` a little below it, so 15 digits show the difference).
+    // Doubles are shown as `as.character()` shows them: `2^-1000` has no
+    // short decimal form, so it shows 15 significant digits. (Not a literal
+    // like `1e-300`: R's parser reads that exactly on x86_64 Linux but a
+    // little below it on aarch64 macOS, whose `long double` is a `double`.)
     let msg = invalid_message(
-        vec_of("c(1, 3.5, Inf, -Inf, 2^31, -2^31, 3e10, 1e300, 1e-300, 0.1 + 0.2, 1e-5)")
+        vec_of("c(1, 3.5, Inf, -Inf, 2^31, -2^31, 3e10, 1e300, 2^-1000, 0.1 + 0.2, 1e-5)")
             .unwrap_err(),
     );
     assert_eq!(
         msg,
-        r#"non-integer value(s): "3.5", "Inf", "-Inf", "2147483648", "-2147483648", "3e+10", "1e+300", "9.99999999999999e-301", "0.3", "1e-05" (elements 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)"#
+        r#"non-integer value(s): "3.5", "Inf", "-Inf", "2147483648", "-2147483648", "3e+10", "1e+300", "9.33263618503219e-302", "0.3", "1e-05" (elements 2, 3, 4, 5, 6, 7, 8, 9, 10, 11)"#
     );
     let msg = invalid_message(vec_of("c(123456.5, 1e10)").unwrap_err());
     assert_eq!(
