@@ -4,11 +4,12 @@
 //! `None` fill for fields absent in a given variant.
 
 use proc_macro2::TokenStream;
-use quote::{ToTokens, format_ident, quote};
+use quote::{ToTokens, format_ident, quote, quote_spanned};
+use syn::spanned::Spanned;
 use syn::{DeriveInput, Fields};
 
 use super::{
-    ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
+    ColumnKind, ColumnRegistry, DataFrameAttrs, EnumAutoExpandVecData, EnumExpandedFixedData,
     EnumExpandedVecData, EnumMapFieldData, EnumResolvedField, EnumSingleFieldData,
     EnumStructFieldData, FieldTypeKind, ResolvedColumn, SPELL_TYPES_ALIKE, VariantInfo,
     VariantShape, borrowed_string_column, classify_field_type, column_local, column_str,
@@ -522,38 +523,43 @@ pub(super) fn derive_enum_dataframe(
 
     for (variant_idx, vi) in variant_infos.iter().enumerate() {
         for erf in &vi.fields {
-            // Use the rust_name span for error reporting
-            let err_span = erf.rust_name().span();
+            let (variant, span) = (&vi.name, erf.rust_name().span());
             match erf {
                 EnumResolvedField::Single(data) => {
-                    if data.is_factor {
-                        registry.register_factor(
-                            &data.col_name.to_string(),
-                            &data.ty,
-                            variant_idx,
-                            &vi.name,
-                            err_span,
-                        )?;
+                    let kind = if data.is_factor {
+                        ColumnKind::Factor
                     } else {
-                        registry.register(
-                            &data.col_name.to_string(),
-                            &data.ty,
-                            variant_idx,
-                            &vi.name,
-                            err_span,
-                        )?;
-                    }
+                        ColumnKind::Value
+                    };
+                    let col_name = data.col_name.to_string();
+                    registry.register(&col_name, &data.ty, kind, variant_idx, variant, span)?;
                 }
                 EnumResolvedField::ExpandedFixed(data) => {
                     for i in 1..=data.len {
                         let name = format!("{}_{}", data.base_name, i);
-                        registry.register(&name, &data.elem_ty, variant_idx, &vi.name, err_span)?;
+                        let kind = ColumnKind::Value;
+                        registry.register(
+                            &name,
+                            &data.elem_ty,
+                            kind,
+                            variant_idx,
+                            variant,
+                            span,
+                        )?;
                     }
                 }
                 EnumResolvedField::ExpandedVec(data) => {
                     for i in 1..=data.width {
                         let name = format!("{}_{}", data.base_name, i);
-                        registry.register(&name, &data.elem_ty, variant_idx, &vi.name, err_span)?;
+                        let kind = ColumnKind::Value;
+                        registry.register(
+                            &name,
+                            &data.elem_ty,
+                            kind,
+                            variant_idx,
+                            variant,
+                            span,
+                        )?;
                     }
                 }
                 // AutoExpandVec: not registered in ColumnRegistry (width is dynamic).
@@ -568,20 +574,21 @@ pub(super) fn derive_enum_dataframe(
                     // / Vec<Option<Vec<V>>> in companion struct via ColumnRegistry wrapping).
                     let key_vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#key_ty>);
                     let val_vec_ty: syn::Type = syn::parse_quote!(::std::vec::Vec<#val_ty>);
-                    registry.register(&keys_name, &key_vec_ty, variant_idx, &vi.name, err_span)?;
-                    registry.register(&vals_name, &val_vec_ty, variant_idx, &vi.name, err_span)?;
+                    let kind = ColumnKind::Value;
+                    registry.register(&keys_name, &key_vec_ty, kind, variant_idx, variant, span)?;
+                    registry.register(&vals_name, &val_vec_ty, kind, variant_idx, variant, span)?;
                 }
                 // Struct: registers one Vec<Option<Inner>> column under base_name.
                 // Flattening into prefixed columns happens at into_data_frame() time, not here.
                 EnumResolvedField::Struct(data) => {
-                    let inner_ty = &data.inner_ty;
-                    // Register as Option<Inner>; the column in the companion struct is Vec<Option<Inner>>.
+                    let kind = ColumnKind::Struct;
                     registry.register(
                         &data.base_name,
-                        inner_ty,
+                        &data.inner_ty,
+                        kind,
                         variant_idx,
-                        &vi.name,
-                        err_span,
+                        variant,
+                        span,
                     )?;
                 }
             }
@@ -608,30 +615,22 @@ pub(super) fn derive_enum_dataframe(
             if let EnumResolvedField::AutoExpandVec(auto_data) = erf {
                 if let Some(&idx) = auto_expand_index.get(&auto_data.base_name) {
                     let first = &auto_expand_cols[idx];
-                    let elem_match = same_column_type(&first.elem_ty, &auto_data.elem_ty);
-                    let container_match =
-                        same_column_type(&first.container_ty, &auto_data.container_ty);
-                    if !elem_match {
-                        if coerce_to_string {
-                            auto_expand_cols[idx].elem_ty = string_ty.clone();
-                        } else {
-                            return Err(syn::Error::new(
-                                auto_data.rust_name.span(),
-                                format!(
-                                    "type conflict for auto-expand field `{}`: variant `{}` has \
-                                     element type `{}`, variant `{}` has `{}`. {}",
-                                    auto_data.base_name,
-                                    vi.name,
-                                    type_display(&auto_data.elem_ty),
-                                    first.first_variant,
-                                    type_display(&first.elem_ty),
-                                    SPELL_TYPES_ALIKE,
-                                ),
-                            ));
-                        }
-                    }
-                    if !container_match {
-                        let first = &auto_expand_cols[idx];
+                    // The container is what the column stores, so it must be
+                    // one kind in every variant; its element joins the column
+                    // as a scalar field does (#2141): rustc checks it.
+                    let container_kind = |ty: &syn::Type| match ty {
+                        syn::Type::Reference(_) => "&[T]".to_string(),
+                        syn::Type::Path(tp) => tp
+                            .path
+                            .segments
+                            .last()
+                            .map(|segment| segment.ident.to_string())
+                            .unwrap_or_default(),
+                        _ => String::new(),
+                    };
+                    if container_kind(&first.container_ty)
+                        != container_kind(&auto_data.container_ty)
+                    {
                         return Err(syn::Error::new(
                             auto_data.rust_name.span(),
                             format!(
@@ -644,6 +643,22 @@ pub(super) fn derive_enum_dataframe(
                                 type_display(&auto_data.container_ty),
                                 first.first_variant,
                                 type_display(&first.container_ty),
+                            ),
+                        ));
+                    }
+                    if coerce_to_string && !same_column_type(&first.elem_ty, &auto_data.elem_ty) {
+                        return Err(syn::Error::new(
+                            auto_data.rust_name.span(),
+                            format!(
+                                "`conflicts = \"string\"` can't store auto-expand field `{}` \
+                                 as text: variant `{}` has element type `{}`, variant `{}` has \
+                                 `{}`. {}",
+                                auto_data.base_name,
+                                vi.name,
+                                type_display(&auto_data.elem_ty),
+                                first.first_variant,
+                                type_display(&first.elem_ty),
+                                SPELL_TYPES_ALIKE,
                             ),
                         ));
                     }
@@ -1236,7 +1251,7 @@ pub(super) fn derive_enum_dataframe(
         .filter(|col| {
             let name_str = col.col_name.to_string();
             !col.string_coerced
-                && !col.is_factor
+                && col.kind != ColumnKind::Factor
                 && !struct_col_names.contains(&name_str)
                 && !as_list_struct_col_names.contains(&name_str)
                 && !expanded_col_names.contains(&name_str)
@@ -1287,14 +1302,29 @@ pub(super) fn derive_enum_dataframe(
                                         if data.col_name == *col_name =>
                                     {
                                         let binding = &data.binding;
+                                        // Every field joins its column (typed as the
+                                        // first variant spells it) through `SameColumn`,
+                                        // which rustc checks at the field (#2141).
+                                        let (field_ty, col_ty) = (&data.ty, &c.ty);
+                                        let field = if c.string_coerced {
+                                            quote! { #binding }
+                                        } else if borrowed {
+                                            quote_spanned! {field_ty.span()=>
+                                                <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::column_ref(#binding)
+                                            }
+                                        } else {
+                                            quote_spanned! {field_ty.span()=>
+                                                <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#binding)
+                                            }
+                                        };
                                         let value = if c.string_coerced {
                                             quote! { ::std::string::ToString::to_string(&#binding) }
                                         } else if !borrowed {
-                                            quote! { #binding }
+                                            field
                                         } else if borrowed_string_cols.contains(&col_name_str) {
-                                            column_str(quote! { #binding })
+                                            column_str(field)
                                         } else {
-                                            quote! { ::core::clone::Clone::clone(#binding) }
+                                            quote! { ::core::clone::Clone::clone(#field) }
                                         };
                                         return quote! { #target.push(::core::option::Option::Some(#value)); };
                                     }
@@ -1303,7 +1333,15 @@ pub(super) fn derive_enum_dataframe(
                                         for (i, elem) in elems.iter().enumerate() {
                                             let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                return quote! { #target.push(::core::option::Option::Some(#elem)); };
+                                                let (field_ty, col_ty) = (&data.elem_ty, &c.ty);
+                                                let value = if c.string_coerced {
+                                                    quote! { #elem }
+                                                } else {
+                                                    quote_spanned! {field_ty.span()=>
+                                                        <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#elem)
+                                                    }
+                                                };
+                                                return quote! { #target.push(::core::option::Option::Some(#value)); };
                                             }
                                         }
                                     }
@@ -1312,7 +1350,15 @@ pub(super) fn derive_enum_dataframe(
                                         for (i, elem) in elems.iter().enumerate() {
                                             let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                return quote! { #target.push(#elem); };
+                                                let (field_ty, col_ty) = (&data.elem_ty, &c.ty);
+                                                let value = if c.string_coerced {
+                                                    quote! { #elem }
+                                                } else {
+                                                    quote_spanned! {field_ty.span()=>
+                                                        ::core::option::Option::map(#elem, <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column)
+                                                    }
+                                                };
+                                                return quote! { #target.push(#value); };
                                             }
                                         }
                                     }
@@ -1338,10 +1384,29 @@ pub(super) fn derive_enum_dataframe(
                                             } else {
                                                 quote! { #binding.into_iter() }
                                             };
+                                            let (key_ty, val_ty) = (&data.key_ty, &data.val_ty);
+                                            let vals_c = columns.iter().find(|v| v.col_name == vals_name);
+                                            let keys = if c.string_coerced {
+                                                quote! { __mx_keys }
+                                            } else {
+                                                let col_ty = &c.ty;
+                                                quote_spanned! {key_ty.span()=>
+                                                    <::std::vec::Vec<#key_ty> as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(__mx_keys)
+                                                }
+                                            };
+                                            let vals = match vals_c {
+                                                Some(v) if !v.string_coerced => {
+                                                    let col_ty = &v.ty;
+                                                    quote_spanned! {val_ty.span()=>
+                                                        <::std::vec::Vec<#val_ty> as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(__mx_vals)
+                                                    }
+                                                }
+                                                _ => quote! { __mx_vals },
+                                            };
                                             return quote! {
                                                 let (__mx_keys, __mx_vals) = #pairs.unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
-                                                #target.push(::core::option::Option::Some(__mx_keys));
-                                                #vals_col.push(::core::option::Option::Some(__mx_vals));
+                                                #target.push(::core::option::Option::Some(#keys));
+                                                #vals_col.push(::core::option::Option::Some(#vals));
                                             };
                                         }
                                         if col_name_str == vals_name {
@@ -1354,10 +1419,15 @@ pub(super) fn derive_enum_dataframe(
                                         if data.base_name == col_name_str =>
                                     {
                                         let binding = &data.binding;
+                                        let (field_ty, col_ty) = (&data.inner_ty, &c.ty);
                                         let value = if borrowed {
-                                            quote! { ::core::clone::Clone::clone(#binding) }
+                                            quote_spanned! {field_ty.span()=>
+                                                ::core::clone::Clone::clone(<#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::column_ref(#binding))
+                                            }
                                         } else {
-                                            quote! { #binding }
+                                            quote_spanned! {field_ty.span()=>
+                                                <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#binding)
+                                            }
                                         };
                                         return quote! { #target.push(::core::option::Option::Some(#value)); };
                                     }
@@ -1386,10 +1456,15 @@ pub(super) fn derive_enum_dataframe(
                                     && data.base_name == ac.base_name
                                 {
                                     let binding = &data.binding;
+                                    let (field_ty, col_ty) = (&data.container_ty, &ac.container_ty);
                                     let value = if borrowed {
-                                        quote! { &(#binding)[..] }
+                                        quote_spanned! {field_ty.span()=>
+                                            &(<#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::column_ref(#binding))[..]
+                                        }
                                     } else {
-                                        quote! { #binding }
+                                        quote_spanned! {field_ty.span()=>
+                                            <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#binding)
+                                        }
                                     };
                                     return quote! { #target.push(::core::option::Option::Some(#value)); };
                                 }
@@ -1699,18 +1774,30 @@ pub(super) fn derive_enum_dataframe(
                                         if data.col_name == *col_name =>
                                     {
                                         let binding = &data.binding;
-                                        if col.string_coerced {
-                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(::std::string::ToString::to_string(&#binding))); };
+                                        let (field_ty, col_ty) = (&data.ty, &col.ty);
+                                        let value = if col.string_coerced {
+                                            quote! { ::std::string::ToString::to_string(&#binding) }
                                         } else {
-                                            return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
-                                        }
+                                            quote_spanned! {field_ty.span()=>
+                                                <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#binding)
+                                            }
+                                        };
+                                        return quote! { #w_name.write(__i, ::core::option::Option::Some(#value)); };
                                     }
                                     EnumResolvedField::ExpandedFixed(data) => {
                                         let elems = enum_elem_idents(pos, data.len);
                                         for (i, elem) in elems.iter().enumerate() {
                                             let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                return quote! { #w_name.write(__i, ::core::option::Option::Some(#elem)); };
+                                                let (field_ty, col_ty) = (&data.elem_ty, &col.ty);
+                                                let value = if col.string_coerced {
+                                                    quote! { #elem }
+                                                } else {
+                                                    quote_spanned! {field_ty.span()=>
+                                                        <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#elem)
+                                                    }
+                                                };
+                                                return quote! { #w_name.write(__i, ::core::option::Option::Some(#value)); };
                                             }
                                         }
                                     }
@@ -1719,7 +1806,15 @@ pub(super) fn derive_enum_dataframe(
                                         for (i, elem) in elems.iter().enumerate() {
                                             let expanded_name = format!("{}_{}", data.base_name, i + 1);
                                             if expanded_name == col_name_str {
-                                                return quote! { #w_name.write(__i, #elem); };
+                                                let (field_ty, col_ty) = (&data.elem_ty, &col.ty);
+                                                let value = if col.string_coerced {
+                                                    quote! { #elem }
+                                                } else {
+                                                    quote_spanned! {field_ty.span()=>
+                                                        ::core::option::Option::map(#elem, <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column)
+                                                    }
+                                                };
+                                                return quote! { #w_name.write(__i, #value); };
                                             }
                                         }
                                     }
@@ -1732,10 +1827,29 @@ pub(super) fn derive_enum_dataframe(
                                         if col_name_str == keys_name {
                                             let vals_col = format_ident!("{}", vals_name);
                                             let w_vals = format_ident!("__w_{}", vals_col);
+                                            let (key_ty, val_ty) = (&data.key_ty, &data.val_ty);
+                                            let vals_c = columns.iter().find(|v| v.col_name == vals_name);
+                                            let keys = if col.string_coerced {
+                                                quote! { __mx_keys }
+                                            } else {
+                                                let col_ty = &col.ty;
+                                                quote_spanned! {key_ty.span()=>
+                                                    <::std::vec::Vec<#key_ty> as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(__mx_keys)
+                                                }
+                                            };
+                                            let vals = match vals_c {
+                                                Some(v) if !v.string_coerced => {
+                                                    let col_ty = &v.ty;
+                                                    quote_spanned! {val_ty.span()=>
+                                                        <::std::vec::Vec<#val_ty> as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(__mx_vals)
+                                                    }
+                                                }
+                                                _ => quote! { __mx_vals },
+                                            };
                                             return quote! {
                                                 let (__mx_keys, __mx_vals) = #binding.into_iter().unzip::<_, _, ::std::vec::Vec<_>, ::std::vec::Vec<_>>();
-                                                #w_name.write(__i, ::core::option::Option::Some(__mx_keys));
-                                                #w_vals.write(__i, ::core::option::Option::Some(__mx_vals));
+                                                #w_name.write(__i, ::core::option::Option::Some(#keys));
+                                                #w_vals.write(__i, ::core::option::Option::Some(#vals));
                                             };
                                         }
                                         if col_name_str == vals_name {
@@ -1748,7 +1862,13 @@ pub(super) fn derive_enum_dataframe(
                                         if data.base_name == col_name_str =>
                                     {
                                         let binding = &data.binding;
-                                        return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
+                                        let (field_ty, col_ty) = (&data.inner_ty, &col.ty);
+                                        let value = {
+                                            quote_spanned! {field_ty.span()=>
+                                                <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#binding)
+                                            }
+                                        };
+                                        return quote! { #w_name.write(__i, ::core::option::Option::Some(#value)); };
                                     }
                                     _ => {}
                                 }
@@ -1772,8 +1892,12 @@ pub(super) fn derive_enum_dataframe(
                                 if let EnumResolvedField::AutoExpandVec(data) = erf
                                     && data.base_name == ac.base_name
                                 {
-                                    let binding = &data.binding;
-                                    return quote! { #w_name.write(__i, ::core::option::Option::Some(#binding)); };
+                                    let (binding, field_ty, col_ty) =
+                                        (&data.binding, &data.container_ty, &ac.container_ty);
+                                    let value = quote_spanned! {field_ty.span()=>
+                                        <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::into_column(#binding)
+                                    };
+                                    return quote! { #w_name.write(__i, ::core::option::Option::Some(#value)); };
                                 }
                             }
                             quote! { #w_name.write(__i, ::core::option::Option::None); }
@@ -3082,6 +3206,7 @@ fn enum_reader_field_value(
     erf: &EnumResolvedField,
     variant_name_str: &str,
     take: bool,
+    col_types: &HashMap<String, syn::Type>,
 ) -> TokenStream {
     let cell = |col_var: &syn::Ident| {
         if take {
@@ -3105,7 +3230,12 @@ fn enum_reader_field_value(
             } else {
                 "column"
             };
-            required(&col_var, what, &data.col_name.to_string())
+            let col_name = data.col_name.to_string();
+            let value = required(&col_var, what, &col_name);
+            let (field_ty, col_ty) = (&data.ty, &col_types[&col_name]);
+            quote_spanned! {field_ty.span()=>
+                <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::from_column(#value)
+            }
         }
         EnumResolvedField::ExpandedFixed(data) => {
             let elem_ty = &data.elem_ty;
@@ -3113,7 +3243,12 @@ fn enum_reader_field_value(
             let slots: Vec<TokenStream> = (1..=data.len)
                 .map(|k| {
                     let col_var = format_ident!("__col_{}_{}", data.base_name, k);
-                    required(&col_var, "column", &format!("{}_{}", data.base_name, k))
+                    let col_name = format!("{}_{}", data.base_name, k);
+                    let value = required(&col_var, "column", &col_name);
+                    let col_ty = &col_types[&col_name];
+                    quote_spanned! {elem_ty.span()=>
+                        <#elem_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::from_column(#value)
+                    }
                 })
                 .collect();
             quote! { { let __arr: [#elem_ty; #len] = [ #(#slots),* ]; __arr } }
@@ -3121,7 +3256,13 @@ fn enum_reader_field_value(
         EnumResolvedField::ExpandedVec(data) => {
             let elem_ty = &data.elem_ty;
             let slots: Vec<TokenStream> = (1..=data.width)
-                .map(|k| cell(&format_ident!("__col_{}_{}", data.base_name, k)))
+                .map(|k| {
+                    let value = cell(&format_ident!("__col_{}_{}", data.base_name, k));
+                    let col_ty = &col_types[&format!("{}_{}", data.base_name, k)];
+                    quote_spanned! {elem_ty.span()=>
+                        ::core::option::Option::map(#value, <#elem_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::from_column)
+                    }
+                })
                 .collect();
             quote! { [ #(#slots),* ].into_iter().flatten().collect::<::std::vec::Vec<#elem_ty>>().into() }
         }
@@ -3141,15 +3282,31 @@ fn enum_reader_field_value(
                     })
                 }
             };
-            quote! { #cells.collect::<::std::vec::Vec<#elem_ty>>().into() }
+            let col_ty = &col_types[&data.base_name];
+            // Only the `SameColumn` step takes the element's span: the
+            // `.into()` to the field's container stays the derive's, so Clippy
+            // doesn't read it as the user's (`useless_conversion` on a `Vec`).
+            let elems = quote_spanned! {elem_ty.span()=>
+                ::core::iter::Iterator::map(#cells, <#elem_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::from_column)
+            };
+            quote! { #elems.collect::<::std::vec::Vec<#elem_ty>>().into() }
         }
         EnumResolvedField::Map(data) => {
             let keys_var = format_ident!("__mapcol_{}_keys", data.base_name.replace('-', "_"));
             let vals_var = format_ident!("__mapcol_{}_values", data.base_name.replace('-', "_"));
             let base = &data.base_name;
             let map_ty = &data.map_ty;
+            let (key_ty, val_ty) = (&data.key_ty, &data.val_ty);
             let keys = required(&keys_var, "map column", base);
             let vals = required(&vals_var, "map column", base);
+            let keys_col = &col_types[&format!("{base}_keys")];
+            let vals_col = &col_types[&format!("{base}_values")];
+            let keys = quote_spanned! {key_ty.span()=>
+                <::std::vec::Vec<#key_ty> as ::miniextendr_api::dataframe::SameColumn<#keys_col>>::from_column(#keys)
+            };
+            let vals = quote_spanned! {val_ty.span()=>
+                <::std::vec::Vec<#val_ty> as ::miniextendr_api::dataframe::SameColumn<#vals_col>>::from_column(#vals)
+            };
             quote! {
                 {
                     let __keys = #keys;
@@ -3168,11 +3325,12 @@ fn enum_reader_field_value(
             let vec_var = format_ident!("__sf_{}", data.base_name.replace('-', "_"));
             let base = &data.base_name;
             let cell = cell(&vec_var);
-            quote! {
-                #cell.ok_or_else(|| ::std::format!(
+            let (field_ty, col_ty) = (&data.inner_ty, &col_types[base]);
+            quote_spanned! {field_ty.span()=>
+                <#field_ty as ::miniextendr_api::dataframe::SameColumn<#col_ty>>::from_column(#cell.ok_or_else(|| ::std::format!(
                     "variant `{}` row {}: struct field `{}` is absent for this variant",
                     #variant_name_str, __i, #base
-                ))?
+                ))?)
             }
         }
     }
@@ -3291,7 +3449,7 @@ fn build_enum_reader(
             continue;
         }
 
-        if col.is_factor {
+        if col.kind == ColumnKind::Factor {
             // as_factor column: use unit_factor_option_vec_from_sexp.
             extracts.push(quote! {
                 let mut #col_var: ::std::vec::Vec<::core::option::Option<#ty>> = {
@@ -3347,6 +3505,19 @@ fn build_enum_reader(
                 auto_expand_base_names.push((data.base_name.clone(), data.elem_ty.clone()));
             }
         }
+    }
+
+    // The type each column holds, as its first variant spells it; every field
+    // reads its value through `SameColumn`, the bound the fills check (#2141).
+    // An auto-expand field's entry is its element type.
+    let mut col_types: HashMap<String, syn::Type> = columns
+        .iter()
+        .map(|c| (c.col_name.to_string(), c.ty.clone()))
+        .collect();
+    for (base_name, elem_ty) in &auto_expand_base_names {
+        col_types
+            .entry(base_name.clone())
+            .or_insert_with(|| elem_ty.clone());
     }
 
     for (base_name, elem_ty) in &auto_expand_base_names {
@@ -3569,7 +3740,7 @@ fn build_enum_reader(
             let values = vi
                 .fields
                 .iter()
-                .map(|erf| enum_reader_field_value(erf, &variant_name_str, take));
+                .map(|erf| enum_reader_field_value(erf, &variant_name_str, take, &col_types));
             match vi.shape {
                 VariantShape::Named => {
                     let names = vi.fields.iter().map(|erf| erf.rust_name());

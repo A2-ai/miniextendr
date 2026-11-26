@@ -1613,6 +1613,48 @@ impl<Df: ColumnarFrame<Row>, Row> FromRowsParSequential<Df, Row> for &FromRowsPa
 }
 // endregion
 
+// region: SameColumn — an enum variant's field in its column (#2141)
+
+/// The column a `#[derive(DataFrameRow)]` enum variant's field joins.
+///
+/// The variants share one column per field name, typed as the first variant
+/// writes it. A later variant that writes the type differently (an alias, a
+/// renamed import, another path) moves its values into and out of that column
+/// through this identity, so the derive needs no name resolution: a spelling
+/// of the column's type passes, and any other type is refused at the field.
+#[doc(hidden)]
+#[diagnostic::on_unimplemented(
+    message = "a `{Self}` field can't share a column of `{T}`",
+    label = "the same-named fields of every variant share one column, typed as the first variant writes it",
+    note = "to keep fields of different types in one column as text, put `#[dataframe(conflicts = \"string\")]` on the enum"
+)]
+pub trait SameColumn<T>: Sized {
+    /// The field's value as a column value.
+    fn into_column(self) -> T;
+    /// A column value as the field's value.
+    fn from_column(value: T) -> Self;
+    /// A reference to the field's value as a column value.
+    fn column_ref(&self) -> &T;
+}
+
+impl<T> SameColumn<T> for T {
+    #[inline(always)]
+    fn into_column(self) -> T {
+        self
+    }
+
+    #[inline(always)]
+    fn from_column(value: T) -> Self {
+        value
+    }
+
+    #[inline(always)]
+    fn column_ref(&self) -> &T {
+        self
+    }
+}
+// endregion
+
 // region: ColumnSource — internal column-assembly engine (ex-public convert::IntoDataFrame)
 
 /// Internal engine that turns a value into a `data.frame`-shaped [`List`].

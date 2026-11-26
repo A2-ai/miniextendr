@@ -630,29 +630,44 @@ fn get_events() -> BuiltDataFrame {
 - `align` is implicit for enums (accepted but not required).
 - Borrowed fields (`&'a str`, `&'a [T]`) work in enum variants — the same lifetime propagates through the companion struct. Explicit lifetime params on `#[miniextendr]` fns/impls are allowed too (only type and const generics are rejected).
 
-#### Type conflicts across variants
+#### Fields that share a column
 
-A proc macro sees types only as written, so the derive compares spellings. A
-standard-library path to a prelude type matches its bare name: `i32` and
-`::core::primitive::i32`, `String` and `std::string::String` (or
-`alloc::string::String`), and likewise `Vec`, `Box` and `Option`, with or
-without a leading `::`. The comparison looks inside type arguments, slices,
-arrays and references, so `Vec<i32>` matches `::std::vec::Vec<::core::primitive::i32>`,
-and it ignores parentheses and the invisible group a `macro_rules!` `$t:ty`
-adds. Such fields share one column, typed as the first variant spells it.
+Same-named fields of different variants share one column, typed as the first
+variant writes it. Each field joins its column through a hidden identity trait
+(`SameColumn`), so rustc decides whether the types are one type, not the
+derive: a type alias, a renamed import, a module-relative path
+(`primitive::i32`) or a standard-library path (`::std::string::String`) joins
+the column. A field of another type is a compile error at that field:
 
-A datetime crate path matches itself with a leading `::` or behind
-`miniextendr_api::` (`jiff::Timestamp` and `::jiff::Timestamp`).
+```text
+error[E0277]: a `String` field can't share a column of `f64`
+   = note: to keep fields of different types in one column as text, put
+           `#[dataframe(conflicts = "string")]` on the enum
+```
 
-Anything else is compared as written: a type alias (`type Id = i32`), a renamed
-import (`use std::string::String as Text`), a module-relative path
-(`primitive::i32`) or a non-prelude type (`HashMap` against
-`std::collections::HashMap`). The conflict error names both spellings; when they
-are one type, spell it the same way in every variant. If a local type shadows a
-prelude name (`struct String`), the two spellings still match, and rustc reports
-the mismatched types instead of the derive. Comparing the types themselves rather than their spellings is #2141.
+The same holds for the elements of an expanded field (`[T; N]`,
+`width = N`, `expand`), a map's keys and values, and a nested struct (#2141).
+An auto-expanded field also keeps one container (`Vec<T>`, `Box<[T]>` or
+`&[T]`) in every variant.
 
-If two variants use the same field name with different types, the derive fails by default. Use `conflicts = "string"` to coerce all conflicting columns to String. The coercion uses the same comparison, so a field typed as an alias of the other variant's type becomes a String column too. Only single-column fields are coerced so far; a conflict in an expanded, map or nested-struct field still fails to compile (#2140):
+The fields must be the same kind of column, too: a value, an `as_factor`
+value, or a nested struct flattened into `<field>_*` columns; the derive
+refuses a mix. A bare type name other than a primitive or `String` is read as
+a nested struct, so `id: i32` in one variant and `id: Id` in another are
+refused as a value column and a nested struct, whatever `Id` is.
+
+If two variants use the same field name with different types, use
+`conflicts = "string"` to store them as text. That choice is made while the
+derive expands, before rustc sees the types, so here it compares spellings: a
+standard-library path to a prelude type matches its bare name (`i32` and
+`::core::primitive::i32`, `String` and `std::string::String`, and likewise
+`Vec`, `Box` and `Option`, inside type arguments, slices, arrays and
+references too; a datetime crate path matches itself behind `::` or
+`miniextendr_api::`), and anything else whose spelling differs, an alias included,
+becomes a `String` column. An auto-expanded field whose element spellings
+differ can't be stored as text and is refused. Only single-column fields are
+coerced so far; a conflict in an expanded, map or nested-struct field still
+fails to compile (#2140):
 
 ```rust
 #[derive(Clone, DataFrameRow)]

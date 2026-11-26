@@ -129,15 +129,23 @@ fn enum_columns_compare_standard_spellings_without_string_coercion() {
         for coerce in [false, true] {
             let mut registry = ColumnRegistry::new(coerce, &string_ty);
             registry
-                .register("value", &first, 0, &syn::parse_quote!(A), Span::call_site())
+                .register(
+                    "value",
+                    &first,
+                    ColumnKind::Value,
+                    0,
+                    &syn::parse_quote!(A),
+                    proc_macro2::Span::call_site(),
+                )
                 .unwrap();
             registry
                 .register(
                     "value",
                     &second,
+                    ColumnKind::Value,
                     1,
                     &syn::parse_quote!(B),
-                    Span::call_site(),
+                    proc_macro2::Span::call_site(),
                 )
                 .unwrap();
             assert_eq!(registry.columns[0].ty, first);
@@ -147,8 +155,12 @@ fn enum_columns_compare_standard_spellings_without_string_coercion() {
     }
 }
 
+/// Without `conflicts`, a column takes every same-named field and keeps the
+/// first spelling, whatever the others write: rustc decides whether they are
+/// one type (#2141). Under `conflicts = "string"`, spellings that differ make a
+/// `String` column, real conflicts and spellings the derive can't resolve alike.
 #[test]
-fn enum_columns_still_detect_real_conflicts_and_distinct_user_paths() {
+fn enum_columns_merge_and_string_mode_still_compares_spellings() {
     let string_ty = syn::parse_quote!(String);
     for (first, second) in [
         (quote!(f64), quote!(String)),
@@ -172,31 +184,52 @@ fn enum_columns_still_detect_real_conflicts_and_distinct_user_paths() {
         (quote!(jiff::civil::Date), quote!(time::Date)),
         (quote!(Timestamp), quote!(jiff::Timestamp)),
     ] {
-        let first = syn::parse2(first).unwrap();
-        let second = syn::parse2(second).unwrap();
+        let first: syn::Type = syn::parse2(first).unwrap();
+        let second: syn::Type = syn::parse2(second).unwrap();
         let mut registry = ColumnRegistry::new(false, &string_ty);
         registry
-            .register("value", &first, 0, &syn::parse_quote!(A), Span::call_site())
+            .register(
+                "value",
+                &first,
+                ColumnKind::Value,
+                0,
+                &syn::parse_quote!(A),
+                proc_macro2::Span::call_site(),
+            )
             .unwrap();
-        assert!(
-            registry
-                .register(
-                    "value",
-                    &second,
-                    1,
-                    &syn::parse_quote!(B),
-                    Span::call_site()
-                )
-                .is_err()
-        );
-        registry.coerce_to_string = true;
         registry
             .register(
                 "value",
                 &second,
+                ColumnKind::Value,
                 1,
                 &syn::parse_quote!(B),
-                Span::call_site(),
+                proc_macro2::Span::call_site(),
+            )
+            .unwrap();
+        assert_eq!(registry.columns[0].ty, first);
+        assert!(!registry.columns[0].string_coerced);
+        assert_eq!(registry.columns[0].present_in, [0, 1]);
+
+        let mut registry = ColumnRegistry::new(true, &string_ty);
+        registry
+            .register(
+                "value",
+                &first,
+                ColumnKind::Value,
+                0,
+                &syn::parse_quote!(A),
+                proc_macro2::Span::call_site(),
+            )
+            .unwrap();
+        registry
+            .register(
+                "value",
+                &second,
+                ColumnKind::Value,
+                1,
+                &syn::parse_quote!(B),
+                proc_macro2::Span::call_site(),
             )
             .unwrap();
         assert!(registry.columns[0].string_coerced);
@@ -204,25 +237,141 @@ fn enum_columns_still_detect_real_conflicts_and_distinct_user_paths() {
     }
 }
 
-/// The conflict error names both variants and both spellings, and offers
-/// one spelling before `conflicts = "string"` (#2084).
+/// Every field reaches its column through `SameColumn`, spanned at the field,
+/// in every fill and in the reader, so a field spelled otherwise than its
+/// column is checked by rustc (#2141).
 #[test]
-fn enum_type_conflicts_name_both_spellings() {
+fn enum_fields_spelled_otherwise_join_their_column_through_same_column() {
+    let code = expand(syn::parse_quote! {
+        #[derive(DataFrameRow)]
+        #[dataframe(tag = "kind")]
+        enum Row {
+            A { id: i32, at: Inner },
+            B { id: ::ids::Id, at: Located },
+        }
+    });
+    // Every field joins its column, the first variant's own included (the
+    // identity impl), so rustc checks each field against the column's type.
+    for (method, field, column) in [
+        ("into_column", ":: ids :: Id", "i32"),
+        ("column_ref", ":: ids :: Id", "i32"),
+        ("into_column", "i32", "i32"),
+        ("into_column", "Located", "Inner"),
+    ] {
+        let call = format!(
+            "< {field} as :: miniextendr_api :: dataframe :: SameColumn < {column} >> :: {method}"
+        );
+        assert!(code.contains(&call), "missing `{call}` in:\n{code}");
+    }
+}
+
+/// Expanded, map and auto-expand fields join their columns the same way:
+/// each element (or the map's key and value vectors, or the auto-expand
+/// container) goes through `SameColumn` in the fills and the reader (#2141).
+#[test]
+fn enum_expanded_fields_join_their_columns_through_same_column() {
+    let code = expand(syn::parse_quote! {
+        #[derive(DataFrameRow)]
+        #[dataframe(tag = "kind")]
+        enum Row {
+            A {
+                pair: [i32; 2],
+                #[dataframe(width = 2)]
+                some: Vec<f64>,
+                tags: ::std::collections::HashMap<String, i32>,
+                #[dataframe(expand)]
+                values: Vec<i32>,
+            },
+            B {
+                pair: [Id; 2],
+                #[dataframe(width = 2)]
+                some: Vec<Real>,
+                tags: ::std::collections::HashMap<Text, Id>,
+                #[dataframe(expand)]
+                values: Vec<Id>,
+            },
+        }
+    });
+    for call in [
+        "< Id as :: miniextendr_api :: dataframe :: SameColumn < i32 >> :: into_column",
+        "< Real as :: miniextendr_api :: dataframe :: SameColumn < f64 >> :: into_column",
+        "< :: std :: vec :: Vec < Text > as :: miniextendr_api :: dataframe :: SameColumn < :: std :: vec :: Vec < String > >> :: into_column",
+        "< :: std :: vec :: Vec < Id > as :: miniextendr_api :: dataframe :: SameColumn < :: std :: vec :: Vec < i32 > >> :: into_column",
+        "< Vec < Id > as :: miniextendr_api :: dataframe :: SameColumn < Vec < i32 > >> :: into_column",
+        "< Vec < Id > as :: miniextendr_api :: dataframe :: SameColumn < Vec < i32 > >> :: column_ref",
+    ] {
+        assert!(code.contains(call), "missing `{call}` in:\n{code}");
+    }
+
+    // The reader takes each element back out of its column the same way.
+    let code = expand(syn::parse_quote! {
+        #[derive(DataFrameRow)]
+        #[dataframe(tag = "kind")]
+        enum Row {
+            A { pair: [i32; 2], at: Inner },
+            B { pair: [primitive::i32; 2], at: Located },
+        }
+    });
+    for call in [
+        "< primitive :: i32 as :: miniextendr_api :: dataframe :: SameColumn < i32 >> :: from_column",
+        "< i32 as :: miniextendr_api :: dataframe :: SameColumn < i32 >> :: from_column",
+        "< Located as :: miniextendr_api :: dataframe :: SameColumn < Inner >> :: from_column",
+    ] {
+        assert!(code.contains(call), "missing `{call}` in:\n{code}");
+    }
+}
+
+/// Same-named fields of different kinds (a value, an `as_factor` value, a
+/// nested struct) can't share a column, whatever their types.
+#[test]
+fn enum_columns_refuse_fields_of_another_kind() {
     let input: DeriveInput = syn::parse_quote! {
         enum Row {
-            A { id: Id },
-            B { id: i32 },
+            A { id: i32 },
+            B { id: Id },
         }
     };
     let error = derive_dataframe_row(input).unwrap_err().to_string();
     assert!(
-        error.contains("variant `B` has type `i32`, variant `A` has `Id`"),
+        error.contains(
+            "field `id` is a nested struct (a bare type name other than a primitive or `String` \
+             is flattened as one) in variant `B` but a value column in variant `A`"
+        ),
         "{error}"
     );
-    assert!(error.contains(SPELL_TYPES_ALIKE), "{error}");
-    assert!(error.contains("conflicts = \"string\""), "{error}");
 
     let input: DeriveInput = syn::parse_quote! {
+        enum Row {
+            A { #[dataframe(as_factor)] level: Level },
+            B { level: Level },
+        }
+    };
+    let error = derive_dataframe_row(input).unwrap_err().to_string();
+    assert!(
+        error.contains("field `level` is a nested struct"),
+        "{error}"
+    );
+    assert!(
+        error.contains("but an `as_factor` column in variant `A`"),
+        "{error}"
+    );
+}
+
+/// An auto-expanded field keeps one container kind; its element joins the
+/// column like a scalar field, except that `conflicts = "string"` can't store
+/// it as text and says so (#2141).
+#[test]
+fn enum_auto_expand_elements_merge_but_not_as_text() {
+    let input: DeriveInput = syn::parse_quote! {
+        enum Row {
+            A { #[dataframe(expand)] values: Vec<i32> },
+            B { #[dataframe(expand)] values: Vec<Id> },
+        }
+    };
+    derive_dataframe_row(input).unwrap();
+
+    let input: DeriveInput = syn::parse_quote! {
+        #[dataframe(conflicts = "string")]
         enum Row {
             A { #[dataframe(expand)] values: Vec<i32> },
             B { #[dataframe(expand)] values: Vec<f64> },
@@ -230,10 +379,23 @@ fn enum_type_conflicts_name_both_spellings() {
     };
     let error = derive_dataframe_row(input).unwrap_err().to_string();
     assert!(
+        error.contains("can't store auto-expand field `values` as text"),
+        "{error}"
+    );
+    assert!(
         error.contains("variant `B` has element type `f64`, variant `A` has `i32`"),
         "{error}"
     );
     assert!(error.contains(SPELL_TYPES_ALIKE), "{error}");
+
+    let input: DeriveInput = syn::parse_quote! {
+        enum Row {
+            A { #[dataframe(expand)] values: Vec<i32> },
+            B { #[dataframe(expand)] values: Box<[i32]> },
+        }
+    };
+    let error = derive_dataframe_row(input).unwrap_err().to_string();
+    assert!(error.contains("container type mismatch"), "{error}");
 }
 
 /// `Option<scalar>` struct fields are a single NA-able column (#1437): the
