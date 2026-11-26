@@ -435,41 +435,50 @@ test_that("sidecar setter on a wrong-type external pointer errors (no silent no-
   expect_equal(SidecarS3_get_data(wrong), 1.5)
 })
 
-test_that("sidecar int setter rejects un-convertible input (no silent NA store)", {
+test_that("sidecar int setter converts like an i32 argument (#1675)", {
   obj <- rdata_sidecar_env_new(count = 7L, score = 1.0, flag = TRUE, name = "x")
 
-  e <- tryCatch(suppressWarnings(SidecarEnv_set_count(obj, "oops")), error = identity)
+  e <- tryCatch(SidecarEnv_set_count(obj, "oops"), error = identity)
   expect_s3_class(e, "rust_error")
-  expect_identical(conditionMessage(e), "'count' must be a number: got \"oops\"")
+  expect_identical(conditionMessage(e), "'count' must be a single integer: got character")
   expect_identical(e$rust_type, "i32")
   expect_error(
     SidecarEnv_set_count(obj, NA_integer_),
-    "'count' must be a number: NA is not allowed",
+    "'count' must be a single integer: NA is not allowed",
     fixed = TRUE
   )
   expect_error(
     SidecarEnv_set_count(obj, integer()),
-    "'count' must be a number: got length 0",
+    "'count' must be a single integer: got length 0",
     fixed = TRUE
   )
+  # A double is refused, whole or not: no silent truncation of 3.5 to 3.
+  for (value in list(3.5, 3, "3")) {
+    expect_error(
+      SidecarEnv_set_count(obj, value),
+      "'count' must be a single integer: got ",
+      fixed = TRUE,
+      class = "rust_error"
+    )
+  }
   # Failed sets must not have written anything
   expect_identical(SidecarEnv_get_count(obj), 7L)
+  SidecarEnv_set_count(obj, 3L)
+  expect_identical(SidecarEnv_get_count(obj), 3L)
 })
 
-test_that("sidecar real and logical setters reject NA (no silent sentinel store)", {
+test_that("sidecar real and logical setters take NA as their argument types do (#1675)", {
   obj <- rdata_sidecar_env_new(count = 1L, score = 2.5, flag = TRUE, name = "x")
 
-  expect_error(
-    SidecarEnv_set_score(obj, NA_real_),
-    "'score' must be a number: NA is not allowed",
-    fixed = TRUE
-  )
+  # An `f64` holds `NA_real_`, so the field stores it and reads it back.
+  SidecarEnv_set_score(obj, NA_real_)
+  expect_identical(SidecarEnv_get_score(obj), NA_real_)
+  # A `bool` has no NA.
   expect_error(
     SidecarEnv_set_flag(obj, NA),
     "'flag' must be TRUE or FALSE: NA is not allowed",
     fixed = TRUE
   )
-  expect_identical(SidecarEnv_get_score(obj), 2.5)
   expect_identical(SidecarEnv_get_flag(obj), TRUE)
 })
 
@@ -527,7 +536,7 @@ test_that("SidecarR6 active binding setter propagates conversion errors", {
 
   expect_error(
     obj$value <- NA_integer_,
-    "'value' must be a number: NA is not allowed",
+    "'value' must be a single integer: NA is not allowed",
     fixed = TRUE,
     class = "rust_error"
   )
@@ -540,7 +549,7 @@ test_that("SidecarS7 property setter propagates conversion errors", {
 
   expect_error(
     obj@prop_int <- NA_integer_,
-    "'prop_int' must be a number: NA is not allowed",
+    "'prop_int' must be a single integer: NA is not allowed",
     fixed = TRUE,
     class = "rust_error"
   )

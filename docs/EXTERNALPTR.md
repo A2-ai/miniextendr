@@ -730,8 +730,7 @@ Access via Sidecar".
 
 | Field type | Where the value lives | Getter | Setter |
 |---|---|---|---|
-| `i32`, `f64`, `bool`, `u8` | the Rust struct | a fresh length-1 vector | reads `value` with `Rf_as*` (so the integer setter truncates `3.5` and accepts `"3"`, #1675) |
-| any `Clone + IntoR + TryFromSexp` type | the Rust struct | converts a clone with `IntoR` (the struct is only borrowed) | converts with `TryFromSexp`, or raises `'name' must be ...` |
+| any `Clone + IntoR + TryFromSexp` type, scalars included | the Rust struct | converts a clone with `IntoR` (the struct is only borrowed) | converts with `TryFromSexp`, as an argument of the field's type does (an `i32` field refuses `3.5`, `3` and `"3"`, an `f64` field refuses `3L` and stores `NA_real_`, #1675), or raises `'name' must be ...` |
 | `Option<T>` with `#[r_data(null_if_none)]`, or `Nullable<T>` | the Rust struct | `NULL` for `None` whatever `T` is (a plain `Option<String>` reads `NA_character_`), else the value (#2270) | `NULL` and `NA` store `None`, as for any `Option<T>`; a bad value raises `'name' must be NULL or ...` |
 | `Sidecar<T>` | the pointer's `prot` list | the stored R value | validates `value` with `TryFromSexp::<T>` and stores the value R gave |
 | `Computed` with `#[r_data(get = "Self::f")]` | nowhere: `f(&self) -> impl IntoR` computes it | converts the function's value with `IntoR`; a `Result` is an error boundary: `Ok` reads the value, `Err` raises the classed error, `Err(())` of a `Result<T, ()>` reads `NULL` | none; the field syntax and an R6 binding raise `miniextendr_read_only_field`, an S7 property has no setter |
