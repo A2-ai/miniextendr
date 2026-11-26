@@ -348,7 +348,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// }
     /// ```
     #[inline]
-    pub unsafe fn to_vec(&self) -> Vec<T>
+    pub unsafe fn to_vec(self) -> Vec<T>
     where
         T: Copy,
     {
@@ -825,7 +825,7 @@ macro_rules! impl_rarray_try_from_sexp_coerce {
             ///
             /// Panics if any element fails to coerce (shouldn't happen if constructed via TryFromSexp).
             #[inline]
-            pub unsafe fn to_vec_coerced(&self) -> Vec<$target> {
+            pub unsafe fn to_vec_coerced(self) -> Vec<$target> {
                 let slice: &[$source] = unsafe { self.sexp.as_slice() };
                 slice
                     .iter()

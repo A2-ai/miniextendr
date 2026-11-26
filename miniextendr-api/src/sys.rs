@@ -1570,6 +1570,7 @@ pub enum RNGtype {
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
+#[expect(clippy::upper_case_acronyms, reason = "R's C names (R_ext/Random.h)")]
 pub enum N01type {
     /// Legacy buggy Kinderman-Ramage method.
     BUGGY_KINDERMAN_RAMAGE = 0,
@@ -1590,6 +1591,7 @@ pub enum N01type {
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
+#[expect(clippy::upper_case_acronyms, reason = "R's C names (R_ext/Random.h)")]
 pub enum Sampletype {
     /// Rounding method for integer sampling.
     ROUNDING = 0,

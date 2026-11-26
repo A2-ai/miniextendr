@@ -1,0 +1,10 @@
+# Clippy finds this file by walking up from each crate's manifest, so it
+# covers every workspace in the repo: the root one, rpkg/src/rust,
+# tests/cross-package and cargo-revendor.
+
+# Lint public items too. By default clippy skips about twenty lints on exported
+# items (upper_case_acronyms, wrong_self_convention, vec_box,
+# redundant_allocation, ...) because their fix would change the public API.
+# miniextendr is unreleased and keeps no backwards compatibility, so there is
+# nothing for that to protect.
+avoid-breaking-exported-api = false

@@ -23,6 +23,7 @@ use crate::sys::{
 
 #[repr(transparent)]
 #[derive(Debug)]
+#[expect(clippy::upper_case_acronyms, reason = "R's C name (Rinternals.h)")]
 /// Opaque underlying S-expression header type.
 pub struct SEXPREC(::std::os::raw::c_void);
 
@@ -63,6 +64,7 @@ pub struct SEXPREC(::std::os::raw::c_void);
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[expect(clippy::upper_case_acronyms, reason = "R's C name (Rinternals.h)")]
 pub struct SEXP(pub *mut SEXPREC);
 
 // SAFETY: SEXP is just a pointer (memory address). Passing the address between

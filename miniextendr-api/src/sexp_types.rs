@@ -35,6 +35,7 @@ pub struct Rcomplex {
 #[repr(u32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[expect(clippy::upper_case_acronyms, reason = "R's C names (Rinternals.h)")]
 pub enum SEXPTYPE {
     #[doc = " nil = NULL"]
     NILSXP = 0,
@@ -439,6 +440,7 @@ impl RNativeType for Rcomplex {
 #[repr(i32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[expect(clippy::upper_case_acronyms, reason = "R's C names (R_ext/Boolean.h)")]
 /// Binary boolean used by many R C APIs.
 pub enum Rboolean {
     /// False.
