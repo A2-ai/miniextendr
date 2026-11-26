@@ -181,6 +181,8 @@ The gctorture-heavy testthat blocks (~32 of the suite's ~34 min) are **opt-in**:
 
 `--all-features` fails (`r6-default` and `s7-default` are mutually exclusive). CI runs a newer toolchain, so lints like `collapsible_match`, `manual_checked_ops` can fire on CI with green local. Reproduce all three before pushing.
 
+The root `clippy.toml` sets `avoid-breaking-exported-api = false`, so the lints clippy normally skips on `pub` items (`wrong_self_convention`, `upper_case_acronyms`, …) fire there too. Fix the item; an R C-header name keeps its spelling under `#[expect(clippy::upper_case_acronyms, reason = …)]`.
+
 ### sccache + `[profile.dev] incremental`
 
 CI uses sccache with `CARGO_INCREMENTAL=0`. Setting `[profile.dev] incremental = false` in a workspace's `Cargo.toml` jumps sccache hit rate to ~100% (incremental builds poison cache keys with per-invocation hashes). Trade-off: loses local incremental compilation — usually worth it for CI and agent worktrees (`cargo clean` often). Not set project-wide currently — flag in PR description if changing.

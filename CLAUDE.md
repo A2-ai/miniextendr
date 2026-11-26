@@ -375,6 +375,11 @@ mutually exclusive. CI runs a newer toolchain, so lints like
 `collapsible_match`, `manual_checked_ops` can fire on CI with green local.
 Reproduce all three before pushing.
 
+The root `clippy.toml` sets `avoid-breaking-exported-api = false`, so the
+lints clippy normally skips on `pub` items (`wrong_self_convention`,
+`upper_case_acronyms`, …) fire there too. Fix the item; an R C-header name
+keeps its spelling under `#[expect(clippy::upper_case_acronyms, reason = …)]`.
+
 ### UI test snapshots
 
 `miniextendr-macros/tests/ui/*.stderr` files must be regenerated when error
