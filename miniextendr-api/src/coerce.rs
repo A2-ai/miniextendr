@@ -533,7 +533,36 @@ impl TryCoerce<bool> for crate::RLogical {
 
 // region: Narrowing to i32 (fallible)
 
-impl_try_narrow!(i32; u32, u64, usize, i64, isize);
+// A non-negative source never reaches `i32::MIN`.
+impl_try_narrow!(i32; u32, u64, usize);
+
+/// R's integer range is `(i32::MIN, i32::MAX]`: `i32::MIN` is the
+/// `NA_integer_` sentinel, so `-2^31` is out of range rather than a value
+/// that would reach R as `NA`, as for `f64` (#1675).
+impl TryCoerce<i32> for i64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<i32, CoerceError> {
+        match i32::try_from(self) {
+            Ok(value) if value != i32::MIN => Ok(value),
+            _ => Err(CoerceError::Overflow),
+        }
+    }
+}
+
+/// `i32::MIN` is out of range, as for `i64`.
+impl TryCoerce<i32> for isize {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<i32, CoerceError> {
+        match i32::try_from(self) {
+            Ok(value) if value != i32::MIN => Ok(value),
+            _ => Err(CoerceError::Overflow),
+        }
+    }
+}
 // endregion
 
 // region: Narrowing to u8 (fallible)

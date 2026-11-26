@@ -113,14 +113,17 @@ impl TryCoerce<BigUint> for f64 {
     }
 }
 
-/// `BigInt` → `i32`: fallible, may not fit
+/// `BigInt` → `i32`: fallible, may not fit. `i32::MIN` is R's
+/// `NA_integer_`, so it is out of range (#1675).
 impl TryCoerce<i32> for BigInt {
     type Error = CoerceError;
 
     #[inline]
     fn try_coerce(self) -> Result<i32, CoerceError> {
-        use num_bigint::TryFromBigIntError;
-        i32::try_from(self).map_err(|_: TryFromBigIntError<BigInt>| CoerceError::Overflow)
+        match i32::try_from(self) {
+            Ok(value) if value != i32::MIN => Ok(value),
+            _ => Err(CoerceError::Overflow),
+        }
     }
 }
 

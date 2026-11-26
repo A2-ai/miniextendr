@@ -80,6 +80,34 @@ fn test_f64_to_i32_excludes_the_na_sentinel() {
     );
 }
 
+/// The integer sources stop at the same bound: `-2^31` would reach R as
+/// `NA` (#1675). A non-negative source can't reach it.
+#[test]
+fn test_wide_integers_to_i32_exclude_the_na_sentinel() {
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(i64::from(i32::MIN)),
+        Err(CoerceError::Overflow)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(i64::from(i32::MIN) + 1),
+        Ok(i32::MIN + 1)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(i64::from(i32::MAX)),
+        Ok(i32::MAX)
+    );
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(i64::from(i32::MAX) + 1),
+        Err(CoerceError::Overflow)
+    );
+    let min = isize::try_from(i32::MIN).unwrap();
+    assert_eq!(
+        TryCoerce::<i32>::try_coerce(min),
+        Err(CoerceError::Overflow)
+    );
+    assert_eq!(TryCoerce::<i32>::try_coerce(min + 1), Ok(i32::MIN + 1));
+}
+
 #[test]
 fn test_i64_to_f64() {
     assert_eq!(TryCoerce::<f64>::try_coerce(1000i64), Ok(1000.0));

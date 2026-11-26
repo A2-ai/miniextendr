@@ -101,8 +101,8 @@ pub enum CoerceError {
 
 | From | To | Failure Condition |
 |------|----|-------------------|
-| `u32`, `u64`, `i64`, `usize`, `isize` | `i32` | Value outside `i32` range |
-| `f64`, `f32` | `i32` | NaN, out of range, or has fractional part |
+| `u32`, `u64`, `i64`, `usize`, `isize` | `i32` | Value outside R's integer range `(i32::MIN, i32::MAX]`: `i32::MIN` is `NA_integer_` |
+| `f64`, `f32` | `i32` | NaN, out of R's integer range (as above), or has fractional part |
 | `i64`, `u64`, `isize`, `usize` | `f64` | Value outside ±2^53 (precision loss) |
 | All integers except `u8` | `u8` | Value outside 0..255 |
 | `i8`, `i16`, `i32`, `i64`, `u32`, `u64`, `usize`, `isize` | `u16` | Value outside 0..65535 |
