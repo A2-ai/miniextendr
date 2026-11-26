@@ -129,3 +129,62 @@ test_that("define raises R's error where R refuses the binding", {
     "locked"
   )
 })
+
+# region: exists / exists_inherits / parent (#1902): the binding is never read
+
+env_exists <- function(env, name, inherits = FALSE) {
+  miniextendr:::expr_env_exists(env, name, inherits)
+}
+
+test_that("exists sees a frame's own bindings; exists_inherits the enclosing ones too", {
+  outer <- new.env(parent = emptyenv())
+  assign("a", 1, envir = outer)
+  inner <- new.env(parent = outer)
+  assign("b", NULL, envir = inner)
+  expect_true(env_exists(inner, "b"))
+  expect_false(env_exists(inner, "a"))
+  expect_true(env_exists(inner, "a", inherits = TRUE))
+  expect_false(env_exists(inner, "zz_bound_nowhere", inherits = TRUE))
+  # From the global environment, base's functions are found on the search path.
+  expect_false(env_exists(globalenv(), "mean"))
+  expect_true(env_exists(globalenv(), "mean", inherits = TRUE))
+  expect_true(env_exists(baseenv(), "mean"))
+  expect_false(env_exists(emptyenv(), "mean", inherits = TRUE))
+})
+
+test_that("exists forces no promise and calls no active binding", {
+  env <- new.env(parent = emptyenv())
+  forced <- 0L
+  delayedAssign("p", {
+    forced <<- forced + 1L
+    stop("forced")
+  }, assign.env = env)
+  makeActiveBinding("act", function() stop("called"), env)
+  expect_true(env_exists(env, "p"))
+  expect_true(env_exists(env, "act"))
+  child <- new.env(parent = env)
+  expect_true(env_exists(child, "p", inherits = TRUE))
+  expect_true(env_exists(child, "act", inherits = TRUE))
+  expect_identical(forced, 0L)
+})
+
+test_that("a missing argument's binding exists, as exists() says", {
+  f <- function(x) miniextendr:::expr_env_exists(environment(), "x", FALSE)
+  g <- function(x) exists("x", inherits = FALSE)
+  expect_true(f())
+  expect_identical(f(), g())
+})
+
+test_that("parent is the enclosing environment, NULL for the empty environment", {
+  parent_of <- function(env) miniextendr:::expr_env_parent(env)
+  outer <- new.env()
+  inner <- new.env(parent = outer)
+  expect_identical(parent_of(inner), outer)
+  expect_identical(parent_of(globalenv()), parent.env(globalenv()))
+  expect_identical(parent_of(baseenv()), emptyenv())
+  expect_null(parent_of(emptyenv()))
+  frame <- (function() environment())()
+  expect_identical(parent_of(frame), environment())
+})
+
+# endregion

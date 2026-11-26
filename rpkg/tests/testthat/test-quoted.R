@@ -1008,3 +1008,54 @@ test_that("Quosure::args() holds its quosures under gctorture", {
 })
 
 # endregion
+
+# region: is_bound_symbol() (#1902)
+
+test_that("Quoted is_bound_symbol() says whether a symbol is bound, reading nothing", {
+  local_var <- 1
+  expect_true(miniextendr:::quoted_is_bound(local_var))
+  # Through the search path.
+  expect_true(miniextendr:::quoted_is_bound(mean))
+  expect_false(miniextendr:::quoted_is_bound(zz_bound_nowhere))
+  # Not a symbol: a string, a call, a constant.
+  expect_identical(miniextendr:::quoted_is_bound("local_var"), NA)
+  expect_identical(miniextendr:::quoted_is_bound(local_var + 1), NA)
+  expect_identical(miniextendr:::quoted_is_bound(1), NA)
+  forced <- 0L
+  delayedAssign("lazy", {
+    forced <<- forced + 1L
+    stop("forced")
+  })
+  makeActiveBinding("active", function() stop("called"), environment())
+  expect_true(miniextendr:::quoted_is_bound(lazy))
+  expect_true(miniextendr:::quoted_is_bound(active))
+  expect_identical(forced, 0L)
+  # A missing argument of an enclosing function is bound, as exists() says.
+  # (Passed straight in, a missing argument is refused by the wrapper, which
+  # checks missing(): R follows the promise to the caller's missing formal.)
+  f <- function(arg) {
+    g <- function() miniextendr:::quoted_is_bound(arg)
+    g()
+  }
+  expect_true(f())
+  expect_true((function(arg) (function() exists("arg"))())())
+})
+
+test_that("Quosure is_bound_symbol() searches the environment the symbol was written in", {
+  skip_if_not_installed("rlang")
+  local_var <- 1
+  expect_true(miniextendr:::quosure_is_bound(local_var))
+  expect_false(miniextendr:::quosure_is_bound(zz_bound_nowhere))
+  expect_identical(miniextendr:::quosure_is_bound(local_var + 1), NA)
+  expect_identical(miniextendr:::quosure_is_bound("local_var"), NA)
+  # Through {{ }}: bound only in the frame that wrote it.
+  wrapper <- function(col) miniextendr:::quosure_is_bound({{ col }})
+  only_here <- function() {
+    hidden_var <- 2
+    wrapper(hidden_var)
+  }
+  expect_true(only_here())
+  expect_false(wrapper(zz_bound_nowhere))
+})
+
+# endregion

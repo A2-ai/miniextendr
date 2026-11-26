@@ -70,6 +70,13 @@ pub fn quoted_name(expr: Quoted) -> Result<Option<String>, SexpError> {
     Ok(expr.as_name()?.map(str::to_owned))
 }
 
+/// Whether `expr` is a bound symbol: `TRUE` / `FALSE` for a symbol, `NA`
+/// otherwise.
+#[miniextendr(noexport)]
+pub fn quoted_is_bound(expr: Quoted) -> Option<bool> {
+    expr.is_bound_symbol()
+}
+
 /// `"absent"` when `expr` was omitted, else `typeof()` of the expression.
 #[miniextendr(noexport)]
 pub fn quoted_optional(expr: Missing<Quoted>) -> String {
@@ -185,6 +192,13 @@ pub fn quosure_expr(x: Quosure) -> SEXP {
 #[miniextendr(noexport)]
 pub fn quosure_env(x: Quosure) -> SEXP {
     x.env()
+}
+
+/// Whether the quosure's expression is a bound symbol: `TRUE` / `FALSE` for
+/// a symbol, `NA` otherwise.
+#[miniextendr(noexport)]
+pub fn quosure_is_bound(x: Quosure) -> Option<bool> {
+    x.is_bound_symbol()
 }
 
 /// The quosure itself.

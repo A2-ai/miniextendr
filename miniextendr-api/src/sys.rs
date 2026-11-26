@@ -2545,8 +2545,19 @@ unsafe extern "C-unwind" {
 
     /// Check if a variable exists in an environment frame.
     ///
-    /// Does not search enclosing environments.
+    /// Does not search enclosing environments. Forces no promise and calls
+    /// no active binding: it only looks the symbol up in the frame (a user
+    /// database environment asks its table's `exists` hook).
     pub fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
+
+    /// The enclosing environment of `env`, R's `parent.env(env)`. R 4.5.0
+    /// added it to the API, so it is declared only when building against
+    /// R >= 4.5 (`r_4_5`); for R 4.4, evaluate `base::parent.env()`. The
+    /// empty environment's parent is `NULL` here, where `parent.env()`
+    /// raises an error.
+    #[cfg(r_4_5)]
+    #[doc(alias = "parent.env")]
+    pub fn R_ParentEnv(env: SEXP) -> SEXP;
 
     /// Remove a variable from an environment frame.
     ///

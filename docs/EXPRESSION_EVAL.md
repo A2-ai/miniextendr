@@ -228,6 +228,39 @@ keeps it reachable while the name stays bound to it; an active binding's value
 is held by nothing. Protect it before the next allocation unless the binding is
 known to be a plain value, and before anything that may rebind the name.
 
+### Whether a name is bound, without reading it
+
+`exists(name)` asks whether the environment's own frame binds `name`, and
+`exists_inherits(name)` searches the enclosing environments too, as
+`exists(name, envir = env, inherits = FALSE / TRUE)` does. Neither reads the
+binding: a promise is not forced, an active binding is not called, and a
+missing argument's binding counts as a binding. `get` / `get_inherits` do read
+it, so they are no substitute. `parent()` is the enclosing environment
+(`parent.env()`), `None` for the empty environment.
+
+`Quoted::is_bound_symbol()` and `Quosure::is_bound_symbol()` answer the same
+question for an argument the user wrote: `Some(true)` / `Some(false)` when the
+expression is a symbol, `None` for a call, a constant or a string. A quosure
+nested in the expression (`{{ col }}`) is looked through, and its own
+environment searched. This tells a column name from a variable before
+anything is evaluated:
+
+```rust
+#[miniextendr]
+pub fn col_kind(col: Quosure) -> &'static str {
+    match col.is_bound_symbol() {
+        Some(false) => "column",    // a bare name that binds nothing
+        Some(true) => "variable",   // also a variable: look in the data first
+        None => "expression",       // a call or a constant: evaluate it
+    }
+}
+```
+
+R 4.5 and later walk the frames natively (`R_existsVarInFrame`,
+`R_ParentEnv`); R 4.4 evaluates `base::exists()` / `base::parent.env()` once,
+which check each frame the same way. No R code of the caller's runs, so these
+need no miniextendr boundary.
+
 ## r_eval_str
 
 Parse a string of R source and evaluate it — the runtime workhorse behind the

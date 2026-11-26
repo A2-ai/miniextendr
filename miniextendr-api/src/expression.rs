@@ -290,6 +290,126 @@ impl REnv {
         unsafe { self.lookup(name, true) }
     }
 
+    /// Whether this environment's own frame binds `name`, as R's
+    /// `exists(name, envir = env, inherits = FALSE)` answers: without reading
+    /// the binding. A promise is not forced (a `delayedAssign()`, an
+    /// argument of an R function, a function in a lazy-loaded namespace), an
+    /// active binding is not called, and a missing argument's binding counts
+    /// as a binding. [`get`](Self::get), which reads the value, does all
+    /// three.
+    ///
+    /// No R code runs, so it needs no miniextendr boundary.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte.
+    pub unsafe fn exists(&self, name: &str) -> bool {
+        assert!(
+            !name.contains('\0'),
+            "a binding name must not contain null bytes"
+        );
+        unsafe { self.exists_symbol(SEXP::symbol(name), false) }
+    }
+
+    /// Whether this environment or an enclosing one binds `name`, as R's
+    /// `exists(name, envir = env)` answers: without reading the binding, as
+    /// [`exists`](Self::exists) does. A name bound to a promise or an active
+    /// binding is bound, whatever forcing or calling it would do.
+    ///
+    /// R 4.5 and later walk the frames natively (`R_existsVarInFrame`,
+    /// `R_ParentEnv`); R 4.4 evaluates `base::exists()` once, which checks
+    /// each frame the same way. Neither runs R code of the caller's, so it
+    /// needs no miniextendr boundary.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `name` contains a null byte.
+    pub unsafe fn exists_inherits(&self, name: &str) -> bool {
+        assert!(
+            !name.contains('\0'),
+            "a binding name must not contain null bytes"
+        );
+        unsafe { self.exists_symbol(SEXP::symbol(name), true) }
+    }
+
+    /// The enclosing environment, R's `parent.env(env)`, or `None` for the
+    /// empty environment, which has none. The global environment's parent is
+    /// the last attached package; a function's frame's parent is the
+    /// environment the function was defined in.
+    ///
+    /// R 4.5 and later read it natively (`R_ParentEnv`); R 4.4 evaluates
+    /// `base::parent.env()`. Neither runs R code of the caller's.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread.
+    ///
+    /// # Returns
+    ///
+    /// The parent, which this environment keeps reachable while it is.
+    pub unsafe fn parent(&self) -> Option<REnv> {
+        unsafe {
+            if self.sexp == R_EmptyEnv {
+                return None;
+            }
+            #[cfg(r_4_5)]
+            let sexp = sys::R_ParentEnv(self.sexp);
+            #[cfg(not(r_4_5))]
+            let sexp = RCall::new("parent.env")
+                .arg(self.sexp)
+                .eval(R_BaseEnv)
+                .unwrap_or_else(|e| panic!("parent.env() of an environment failed: {e}"));
+            Some(REnv { sexp })
+        }
+    }
+
+    /// [`exists`](Self::exists) and [`exists_inherits`](Self::exists_inherits)
+    /// for a name already interned as a symbol.
+    ///
+    /// # Safety
+    ///
+    /// R's main thread; `symbol` is a SYMSXP.
+    pub(crate) unsafe fn exists_symbol(&self, symbol: SEXP, inherits: bool) -> bool {
+        unsafe {
+            if !inherits {
+                return sys::R_existsVarInFrame(self.sexp, symbol) != crate::Rboolean::FALSE;
+            }
+
+            #[cfg(r_4_5)]
+            {
+                let mut env = self.sexp;
+                while env != R_EmptyEnv {
+                    if sys::R_existsVarInFrame(env, symbol) != crate::Rboolean::FALSE {
+                        return true;
+                    }
+                    env = sys::R_ParentEnv(env);
+                }
+                false
+            }
+
+            #[cfg(not(r_4_5))]
+            {
+                // `mode = "any"` (the default) checks each frame with
+                // `R_existsVarInFrame`, forcing nothing. Evaluated in the base
+                // environment, so `exists` is base's own.
+                let name = OwnedProtect::new(sys::Rf_ScalarString(sys::PRINTNAME(symbol)));
+                RCall::new("exists")
+                    .arg(name.get())
+                    .named_arg("envir", self.sexp)
+                    .eval_base_as::<bool>()
+                    .unwrap_or_else(|e| panic!("exists() in an environment failed: {e}"))
+            }
+        }
+    }
+
     /// Bind `name` to `value` in this environment's own frame, as
     /// `assign(name, value, envir = env)` does: a binding of `name` in the
     /// frame is replaced, and the enclosing environments are not touched.

@@ -198,6 +198,36 @@ impl<'a> Quoted<'a> {
         expr_name(self.expr)
     }
 
+    /// Whether the expression is a symbol bound in its environment or an
+    /// enclosing one, as `exists("x", envir = env)` answers for `x`:
+    /// `Some(true)` or `Some(false)` for a symbol, `None` for anything else
+    /// (a call, a constant, a string such as `"TIME"`, an empty argument).
+    ///
+    /// The binding is not read: a promise is not forced and an active binding
+    /// is not called, so `Some(true)` says nothing about what evaluating the
+    /// symbol would do. A binding to a missing argument (a formal of an
+    /// enclosing function that its call left out) counts as bound, as
+    /// `exists()` counts it. Use it to tell a column name the user wrote
+    /// from a variable before deciding to evaluate:
+    ///
+    /// ```ignore
+    /// match col.is_bound_symbol() {
+    ///     Some(false) => { /* a bare name that binds nothing: only a column */ }
+    ///     Some(true) => { /* also a variable: data first, then col.eval() */ }
+    ///     None => { /* an expression: evaluate it */ }
+    /// }
+    /// ```
+    ///
+    /// See [`REnv::exists_inherits`](crate::expression::REnv::exists_inherits).
+    pub fn is_bound_symbol(&self) -> Option<bool> {
+        let expr = self.expr;
+        (expr.type_of() == SEXPTYPE::SYMSXP && expr != SEXP::missing_arg()).then(|| {
+            // SAFETY: a `Quoted` exists only inside the `#[miniextendr]` call
+            // that received it, on R's main thread; `env` is an environment.
+            unsafe { crate::expression::REnv::from_sexp(self.env).exists_symbol(expr, true) }
+        })
+    }
+
     /// Evaluate the expression in its environment, `eval(expr, env)`, keeping
     /// the caller's condition handlers
     /// ([`eval_with_handlers`](crate::expression::eval_with_handlers)).
@@ -647,6 +677,33 @@ impl<'a> Quosure<'a> {
             expr = expr.cdr().car();
         }
         expr_name(expr)
+    }
+
+    /// Whether the expression is a symbol bound in its environment or an
+    /// enclosing one, as `exists("x", envir = env)` answers for `x`:
+    /// `Some(true)` or `Some(false)` for a symbol, `None` for anything else
+    /// (a call, a constant, a string such as `"TIME"`). A quosure nested in
+    /// the expression (`{{ col }}`) is looked through, and its own
+    /// environment is searched.
+    ///
+    /// The binding is not read: a promise is not forced and an active binding
+    /// is not called, so `Some(true)` says nothing about what evaluating the
+    /// symbol would do. A binding to a missing argument counts as bound, as
+    /// `exists()` counts it. See [`Quoted::is_bound_symbol`] for the use, and
+    /// [`REnv::exists_inherits`](crate::expression::REnv::exists_inherits).
+    pub fn is_bound_symbol(&self) -> Option<bool> {
+        let mut expr = self.expr;
+        let mut env = self.env;
+        while is_quosure(expr) {
+            env = expr.get_attr(unsafe { crate::sys::Rf_install(c".Environment".as_ptr()) });
+            expr = expr.cdr().car();
+        }
+        (expr.type_of() == SEXPTYPE::SYMSXP && expr != SEXP::missing_arg() && env.is_environment())
+            .then(|| {
+                // SAFETY: a `Quosure` exists only inside the call that
+                // received it, on R's main thread; `env` is an environment.
+                unsafe { crate::expression::REnv::from_sexp(env).exists_symbol(expr, true) }
+            })
     }
 
     /// Evaluate the quosure with `data` as a data mask,
