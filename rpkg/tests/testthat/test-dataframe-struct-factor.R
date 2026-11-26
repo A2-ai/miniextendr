@@ -31,8 +31,26 @@ test_that("a struct factor inside an enum variant stays a factor, NA where absen
   }
 })
 
+test_that("an Option struct factor is an NA-able factor column that reads back (#2133)", {
+  for (empty in c(FALSE, TRUE)) {
+    df <- df_struct_factor("optional", empty)
+    expect_identical(names(df), c("id", "level"))
+    expect_identical(class(df$level), "factor")
+    expect_identical(levels(df$level), c("Low", "High"))
+    expect_identical(as.integer(df$level), if (empty) integer() else c(1L, NA, 1L))
+  }
+  df <- df_struct_factor("optional", FALSE)
+  bad <- df
+  bad$level <- structure(c(NA_integer_, 0L, 3L), levels = c("Low", "High"), class = "factor")
+  err <- tryCatch(df_struct_factor_roundtrip(bad, "optional"), error = identity)
+  expect_s3_class(err, "error")
+  expect_no_match(conditionMessage(err), "NA is not allowed")
+  expect_match(conditionMessage(err), "code 0 is not a level")
+  expect_match(conditionMessage(err), "code 3 is not a level")
+})
+
 test_that("struct factor readers round-trip owned values and empty columns", {
-  for (shape in c("named", "nested", "expanded", "enum")) {
+  for (shape in c("named", "nested", "expanded", "optional", "enum")) {
     for (empty in c(FALSE, TRUE)) {
       df <- df_struct_factor(shape, empty)
       expect_identical(df_struct_factor_roundtrip(df, shape), df)
@@ -43,7 +61,7 @@ test_that("struct factor readers round-trip owned values and empty columns", {
 test_that("parallel struct factor readers need neither Clone nor Default", {
   skip_if_not(exists("df_struct_factor_roundtrip_par", mode = "function"),
               "rayon feature not compiled")
-  for (shape in c("named", "nested", "expanded", "enum")) {
+  for (shape in c("named", "nested", "expanded", "optional", "enum")) {
     for (empty in c(FALSE, TRUE)) {
       df <- df_struct_factor(shape, empty)
       expect_identical(df_struct_factor_roundtrip_par(df, shape), df)

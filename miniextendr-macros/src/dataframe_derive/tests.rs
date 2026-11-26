@@ -26,6 +26,55 @@ fn struct_as_factor_is_one_readable_column() {
     assert!(code.contains("Self :: try_from_dataframe (sexp)"));
 }
 
+/// An `Option<T>` struct field is an NA-able factor column (#2133): it writes
+/// through `FactorOptionVec<T>` and reads through
+/// `unit_factor_option_vec_from_sexp::<T>`, and stays readable.
+#[test]
+fn struct_as_factor_option_is_an_na_able_readable_column() {
+    let input: DeriveInput = syn::parse_quote! {
+        struct Row {
+            #[dataframe(as_factor)]
+            dir: Option<Direction>,
+        }
+    };
+    let syn::Data::Struct(data) = &input.data else {
+        unreachable!()
+    };
+    let resolved = resolve_struct_field(data.fields.iter().next().unwrap(), 0, false)
+        .unwrap()
+        .unwrap();
+    assert!(field_reader_capable(&resolved));
+    let code = expand(input);
+    assert!(
+        code.contains("FactorOptionVec :: < Direction > :: from"),
+        "{code}"
+    );
+    assert!(
+        code.contains("unit_factor_option_vec_from_sexp :: < Direction > (__col_sexp)"),
+        "{code}"
+    );
+    assert!(!code.contains("FactorVec :: < Option"), "{code}");
+}
+
+/// An enum variant field keeps refusing `Option<T>` under `as_factor`, with
+/// a message about the field rather than the generic `Option` advice.
+#[test]
+fn enum_as_factor_option_is_refused_at_the_field() {
+    let input = syn::parse_quote! {
+        #[dataframe(tag = "kind")]
+        enum Event {
+            Move {
+                #[dataframe(as_factor)]
+                dir: Option<Direction>,
+            },
+            Stop,
+        }
+    };
+    let error = derive_dataframe_row(input).unwrap_err().to_string();
+    assert!(error.contains("not `Option<T>`"), "{error}");
+    assert!(!error.contains("as_list"), "{error}");
+}
+
 #[test]
 fn struct_as_factor_rejects_non_enum_shapes_at_the_field() {
     for ty in [quote! { i32 }, quote! { Vec<i32> }, quote! { [i32; 2] }] {
