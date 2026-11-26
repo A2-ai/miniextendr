@@ -1000,7 +1000,7 @@ Rules:
   `conditionCall(e)` follows the function's call attribution.
 - **Sidecar setters** (`Type_set_<field>`, and the R6 / S7 bindings over them)
   raise the same condition on their `value` formal, naming the field:
-  `'<field>' must be <expected>: <reason>` (`'count' must be a number: got "abc"`,
+  `'<field>' must be <expected>: <reason>` (`'count' must be a single integer: got character`,
   `'tags' must be character: got integer`), with `e$param == "value"` and the
   field's Rust type as `e$rust_type`. The field is in the message because an
   R6 active binding's or S7 property's condition call is the binding's own

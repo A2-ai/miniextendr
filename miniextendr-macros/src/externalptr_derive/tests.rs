@@ -93,15 +93,33 @@ fn sidecar_setter_raises_the_argument_error() {
             .to_string()
     };
 
-    let s = body(syn::parse_quote!(i32), super::SlotKind::ScalarInt);
-    assert!(s.contains("\"'f' must be a number\" , \"value\""), "{s}");
-    assert!(s.contains("scalar_rejection_reason (value)"), "{s}");
+    // A scalar field converts as an argument of its type does (#1675): no
+    // `Rf_as*` coercion, the argument's wording.
+    let s = body(syn::parse_quote!(i32), super::SlotKind::Conversion);
+    assert!(
+        s.contains("\"'f' must be a single integer\" , \"value\""),
+        "{s}"
+    );
+    assert!(
+        s.contains("< i32 as TryFromSexp > :: try_from_sexp (value)"),
+        "{s}"
+    );
     assert!(s.contains("Some (\"i32\")"), "{s}");
     assert!(s.contains("__mx_conversion_err_parts ! ("), "{s}");
-    assert!(!s.contains("failed to convert"), "{s}");
+    assert!(!s.contains("as_integer"), "{s}");
+    assert!(!s.contains("is_na"), "{s}");
 
-    let s = body(syn::parse_quote!(bool), super::SlotKind::ScalarLogical);
+    let s = body(syn::parse_quote!(bool), super::SlotKind::Conversion);
     assert!(s.contains("\"'f' must be TRUE or FALSE\""), "{s}");
+
+    // `f64` takes `NA_real_` as an `f64` argument does: no check after the
+    // conversion.
+    let s = body(syn::parse_quote!(f64), super::SlotKind::Conversion);
+    assert!(
+        s.contains("\"'f' must be a single double\" , \"value\""),
+        "{s}"
+    );
+    assert!(!s.contains("is_na"), "{s}");
 
     let s = body(syn::parse_quote!(Vec<String>), super::SlotKind::Conversion);
     assert!(s.contains("\"'f' must be character\" , \"value\""), "{s}");
@@ -161,7 +179,7 @@ fn sidecar_class_integration_reraises_tagged_conditions() {
         ty: syn::parse_quote!(i32),
         vis: syn::parse_quote!(pub),
         is_public: true,
-        kind: super::SlotKind::ScalarInt,
+        kind: super::SlotKind::Conversion,
         access: super::SidecarAccess::default(),
         prop_doc: None,
         setter_invisible: None,
@@ -281,7 +299,7 @@ fn r_data_name_renames_the_r_field_only() {
         "{out}"
     );
     // The setter's message names the R field.
-    assert!(out.contains("'n.rows' must be a number"), "{out}");
+    assert!(out.contains("'n.rows' must be a single integer"), "{out}");
 }
 
 /// The R name must be non-empty, syntactic, unique, not `.ptr`, and not
@@ -340,7 +358,7 @@ fn computed_fields_get_a_getter_and_a_read_only_setter_arm() {
             super::SlotKind::Computed(syn::parse_quote!(Engine::group_by)),
             super::SlotKind::Sidecar(0),
             super::SlotKind::Computed(syn::parse_quote!(n_rows_of)),
-            super::SlotKind::ScalarInt,
+            super::SlotKind::Conversion,
         ]
     );
     let name = syn::Ident::new("Engine", proc_macro2::Span::call_site());
@@ -953,7 +971,7 @@ fn sidecar_fields_number_their_own_positions() {
     assert_eq!(
         kinds,
         [
-            super::SlotKind::ScalarInt,
+            super::SlotKind::Conversion,
             super::SlotKind::Sidecar(0),
             super::SlotKind::Conversion,
             super::SlotKind::Sidecar(1),
@@ -1130,7 +1148,7 @@ fn field_syntax_helpers_switch_over_the_accessors() {
         ty: syn::parse_quote!(i32),
         vis: syn::parse_quote!(pub),
         is_public: true,
-        kind: super::SlotKind::ScalarInt,
+        kind: super::SlotKind::Conversion,
         access: super::SidecarAccess::default(),
         prop_doc: None,
         setter_invisible: None,

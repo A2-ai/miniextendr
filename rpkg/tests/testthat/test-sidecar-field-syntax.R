@@ -52,7 +52,12 @@ test_that("S3: `$<-` and `[[<-` write the fields and keep the object", {
   expect_identical(x$tags, "c")
   x$data <- 2.5
   expect_identical(x$data, 2.5)
-  x[["data"]] <- 3L
+  x[["data"]] <- 3
+  expect_identical(x$data, 3)
+  # The setter converts like an argument of the field's type (#1675): an
+  # integer is not a double.
+  e <- caught(x[["data"]] <- 4L)
+  expect_identical(conditionMessage(e), "'data' must be a single double: got integer")
   expect_identical(x$data, 3)
 
   # The standalone accessors and the Rust methods see the same values.
@@ -81,9 +86,8 @@ test_that("S3: a value that doesn't convert raises the setter's argument error w
   expect_equal(conditionCall(e), quote(x$tags <- value))
   e <- caught(x[["tags"]] <- 1:3)
   expect_equal(conditionCall(e), quote(x[["tags"]] <- value))
-  # The scalar setters read with `as.numeric()` semantics, which warn first.
-  e <- caught(suppressWarnings(x$data <- "a"))
-  expect_match(conditionMessage(e), "'data' must be a number", fixed = TRUE)
+  e <- caught(x$data <- "a")
+  expect_identical(conditionMessage(e), "'data' must be a single double: got character")
   expect_equal(conditionCall(e), quote(x$data <- value))
   # A large value is never deparsed into the call.
   e <- caught(x$tags <- as.list(seq_len(1000)))
@@ -779,9 +783,9 @@ test_that("env: .DollarNames() completes the fields, then the methods", {
 test_that("env: a refused write reports the call; an unknown name is refused", {
   obj <- SidecarEnv$new(3L, 1.5, TRUE, "n")
   # An assignment reports the method's first formal, `x`, for R's `*tmp*`.
-  e <- caught(suppressWarnings(obj$count <- "oops"))
+  e <- caught(obj$count <- "oops")
   expect_s3_class(e, "rust_error")
-  expect_identical(conditionMessage(e), "'count' must be a number: got \"oops\"")
+  expect_identical(conditionMessage(e), "'count' must be a single integer: got character")
   expect_equal(conditionCall(e), quote(x$count <- value))
   e <- caught(obj$nope <- 1)
   expect_s3_class(e, "miniextendr_no_field")

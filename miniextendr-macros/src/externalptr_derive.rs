@@ -87,7 +87,7 @@
 //! control S7 property setters, whose unmarked return remains visible.
 //! R assignment itself stays invisible regardless of the setter's choice.
 //!
-//! Four field tiers are supported:
+//! Three field tiers are supported:
 //!
 //! 1. **Rooted values** (`Sidecar<T>`) - kept in the external pointer's
 //!    protection list, which roots them and serializes them with the
@@ -102,17 +102,16 @@
 //!    / `mut self: ExternalPtrMut<'_, Self>`) and calls `Self::f(&self)`; see
 //!    `miniextendr_api::externalptr::Sidecar`. A bare `SEXP` field is
 //!    refused: the struct can't root it.
-//! 2. **Scalars** (`i32`, `f64`, `bool`, `u8`) - struct fields, returned as a
-//!    length-1 vector and written with `Rf_as*`
-//! 3. **Conversion types** (anything else) - struct fields, converted with the
-//!    `IntoR`/`TryFromSexp` traits on every read and write
-//! 4. **Computed fields** (`#[r_data(get = "Self::f")] pub f: Computed`,
+//! 2. **Conversion types** (anything else, scalars included) - struct fields,
+//!    converted with the `IntoR`/`TryFromSexp` traits on every read and write,
+//!    as an argument or return value of the field's type is (#1675)
+//! 3. **Computed fields** (`#[r_data(get = "Self::f")] pub f: Computed`,
 //!    #1883) - no value in the struct; the getter calls the named
 //!    `fn(&Self) -> impl IntoR` on the live Rust value; a `Result` from it
 //!    is an error boundary, `Result<T, ()>` reading `NULL` (#2269). There
 //!    is no R setter, as for a read-only field (below). Only `pub`.
 //!
-//! `#[r_data(read_only)]` makes a public field of tier 1 to 3 read-only from
+//! `#[r_data(read_only)]` makes a public field of tier 1 or 2 read-only from
 //! R (#2268): no `Type_set_f()` and no setter C function; under the get/set
 //! field syntax an assignment raises `miniextendr_read_only_field`; the R6
 //! active binding refuses a value with the same class (no call: R6 calls the
@@ -884,8 +883,8 @@ fn is_pub(field: &Field) -> bool {
 /// slot through R's `.Call` interface:
 /// - `Sidecar`: a value in the external pointer's protection list, validated
 ///   with `TryFromSexp::<T>` on write and stored as R gave it.
-/// - Scalars: a struct field, read into R with `Rf_Scalar*`, written with `Rf_as*`.
-/// - Conversion: a struct field, converted with the `IntoR`/`TryFromSexp` traits.
+/// - Conversion: a struct field, converted with the `IntoR`/`TryFromSexp` traits,
+///   as an argument or return value of its type is (a scalar field too, #1675).
 /// - Computed: no field; a getter function of the Rust value, no setter.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum SlotKind {
@@ -898,15 +897,7 @@ pub(crate) enum SlotKind {
     /// `fn(&Self) -> impl IntoR` (a leading `Self` already replaced by the
     /// struct's name), on the live Rust value; there is no setter (#1883).
     Computed(syn::Path),
-    /// Scalar struct field `i32` (or `i16`/`i8`), returned as a length-1 integer.
-    ScalarInt,
-    /// Scalar struct field `f64` (or `f32`), returned as a length-1 double.
-    ScalarReal,
-    /// Scalar struct field `bool` (or `Rbool`), returned as a length-1 logical.
-    ScalarLogical,
-    /// Scalar struct field `u8`, returned as a length-1 raw.
-    ScalarRaw,
-    /// Conversion type -- uses `IntoR`/`TryFromSexp` traits for arbitrary Rust types.
+    /// Any other struct field: `IntoR` reads it, `TryFromSexp` writes it.
     Conversion,
 }
 
@@ -1049,11 +1040,9 @@ fn contains_unrooted_r_view(ty: &syn::Type) -> bool {
 /// Determine the [`SlotKind`] for a field type by inspecting its last path segment.
 ///
 /// Recognizes `Sidecar<T>`, which takes position `sidecars` (the number of
-/// `Sidecar` fields before it), `Computed` with its `get` function, scalar
-/// numerics (`i32`, `i16`, `i8`, `f64`, `f32`), booleans (`bool`, `Rbool`),
-/// and raw bytes (`u8`). An R view, including one in a standard container,
-/// is an error: the struct can't root it.
-/// Everything else falls through to [`SlotKind::Conversion`].
+/// `Sidecar` fields before it), and `Computed` with its `get` function. An R
+/// view, including one in a standard container, is an error: the struct can't
+/// root it. Everything else, scalars included, is [`SlotKind::Conversion`].
 fn slot_kind_for_type(
     ty: &syn::Type,
     sidecars: usize,
@@ -1089,20 +1078,7 @@ fn slot_kind_for_type(
                 format!("`{SIDECAR_TYPE_NAME}` takes one type argument: `{SIDECAR_TYPE_NAME}<T>`"),
             ));
         }
-        if ident == "i32" || ident == "i16" || ident == "i8" {
-            return Ok(SlotKind::ScalarInt);
-        }
-        if ident == "f64" || ident == "f32" {
-            return Ok(SlotKind::ScalarReal);
-        }
-        if ident == "bool" || ident == "Rbool" {
-            return Ok(SlotKind::ScalarLogical);
-        }
-        if ident == "u8" {
-            return Ok(SlotKind::ScalarRaw);
-        }
     }
-    // Everything else uses conversion
     Ok(SlotKind::Conversion)
 }
 
@@ -1255,8 +1231,6 @@ fn require_live_param(slot: &SidecarSlot) -> Ident {
 ///   live address, so without `require_live` it also reads a pointer that
 ///   `readRDS` brought back; with it (the field methods of
 ///   `r_data_accessors`, #1891) a restored pointer is refused.
-/// - Scalar kinds: reads the struct field (accessed via the external pointer
-///   address) and wraps it with `Rf_Scalar*`.
 /// - `Conversion`: clones the struct field and converts it with `IntoR`;
 ///   under `#[r_data(null_if_none)]` the `Option<T>` converts as a
 ///   `Nullable<T>`, so `None` reads `NULL` (#2270).
@@ -1348,42 +1322,6 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                 }
             }
         }
-        SlotKind::ScalarInt => {
-            quote::quote! {
-                use ::miniextendr_api::SEXP;
-                unsafe {
-                    #extract_ref
-                    SEXP::scalar_integer(data.#field_name)
-                }
-            }
-        }
-        SlotKind::ScalarReal => {
-            quote::quote! {
-                use ::miniextendr_api::SEXP;
-                unsafe {
-                    #extract_ref
-                    SEXP::scalar_real(data.#field_name)
-                }
-            }
-        }
-        SlotKind::ScalarLogical => {
-            quote::quote! {
-                use ::miniextendr_api::SEXP;
-                unsafe {
-                    #extract_ref
-                    SEXP::scalar_logical(data.#field_name)
-                }
-            }
-        }
-        SlotKind::ScalarRaw => {
-            quote::quote! {
-                use ::miniextendr_api::SEXP;
-                unsafe {
-                    #extract_ref
-                    SEXP::scalar_raw(data.#field_name)
-                }
-            }
-        }
         SlotKind::Conversion => {
             // Use IntoR trait for conversion (e.g., String -> character). The
             // getter reads the field through a shared borrow, so converting it
@@ -1421,12 +1359,10 @@ fn generate_getter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
 ///   the conversion error) and stores it in the external pointer's protection
 ///   list, which roots it; a live struct's pending value for the field is
 ///   dropped.
-/// - Scalar kinds: writes the struct field, using `Rf_as*` or coercion for
-///   single-element extraction;
-///   an input that doesn't reduce to a single non-NA scalar raises a
-///   conversion error instead of silently storing an NA/`false` sentinel.
-/// - `Conversion`: uses `TryFromSexp::try_from_sexp`; a failed conversion
-///   raises a conversion error instead of silently dropping the write.
+/// - `Conversion`: uses `TryFromSexp::try_from_sexp`, as an argument of the
+///   field's type does (a scalar field too, #1675: no `Rf_as*` coercion); a
+///   failed conversion raises a conversion error instead of silently dropping
+///   the write.
 ///
 /// Returns the external pointer `x` (for R's invisible return convention).
 /// The body runs inside `with_r_unwind_protect` (see the emission site in
@@ -1461,33 +1397,13 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
     // `conversion_error_class` applies. A `Conversion` slot's expectation comes
     // from the same type table as an argument's, else from the error at run
     // time, else `invalid '<field>' argument`
-    // (`rust_conversion_builder::conversion_value_tokens`); a scalar
-    // slot reads its value with `Rf_as*`, which has no error value, so the
-    // reason is worded from the rejected value (`from_r::scalar_rejection_reason`).
+    // (`rust_conversion_builder::conversion_value_tokens`).
     let crate_class = crate::crate_config::conversion_error_class();
     // A `Sidecar<T>` slot converts and reports its `T`.
     let value_ty = sidecar_inner_type(&slot.ty).unwrap_or(&slot.ty);
     let rust_type = crate::type_inspect::type_display(value_ty);
     // The message names the field as R knows it.
     let field_r_name = slot.r_name.clone();
-    let scalar_err = |expected: &str| -> proc_macro2::TokenStream {
-        let prefix = format!("'{field_r_name}' must be {expected}");
-        quote::quote! {
-            ::miniextendr_api::error_value::conversion_condition_value(
-                #prefix,
-                "value",
-                ::core::option::Option::Some(#rust_type),
-                &[#(#crate_class),*],
-                ::miniextendr_api::__mx_conversion_err_parts!(
-                    ::miniextendr_api::from_r::scalar_rejection_reason(value),
-                    true
-                ),
-                ::core::option::Option::None,
-                ::core::option::Option::None,
-            )
-        }
-    };
-
     // Conversion-failure value of a `Conversion` or `Sidecar` slot: the field
     // type's expectation, else the one the type declares or the error knows at
     // run time (a newtype, a `match_arg` enum field), as for an argument. A
@@ -1532,63 +1448,6 @@ fn generate_setter_body(struct_name: &syn::Ident, slot: &SidecarSlot) -> TokenSt
                     ::miniextendr_api::externalptr::sidecar_r_set::<#struct_name>(
                         x, #index, value, require_live,
                     );
-                    x
-                }
-            }
-        }
-        SlotKind::ScalarInt => {
-            let err_value = scalar_err("a number");
-            quote::quote! {
-                use ::miniextendr_api::SexpExt;
-                unsafe {
-                    #extract_mut
-                    data.#field_name = match value.as_integer() {
-                        ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => return #err_value,
-                    };
-                    x
-                }
-            }
-        }
-        SlotKind::ScalarReal => {
-            let err_value = scalar_err("a number");
-            quote::quote! {
-                use ::miniextendr_api::SexpExt;
-                unsafe {
-                    #extract_mut
-                    data.#field_name = match value.as_real() {
-                        ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => return #err_value,
-                    };
-                    x
-                }
-            }
-        }
-        SlotKind::ScalarLogical => {
-            let err_value = scalar_err("TRUE or FALSE");
-            quote::quote! {
-                use ::miniextendr_api::SexpExt;
-                unsafe {
-                    #extract_mut
-                    data.#field_name = match value.as_logical() {
-                        ::core::option::Option::Some(v) => v,
-                        ::core::option::Option::None => return #err_value,
-                    };
-                    x
-                }
-            }
-        }
-        SlotKind::ScalarRaw => {
-            let err_value = scalar_err("a raw value");
-            quote::quote! {
-                use ::miniextendr_api::{SexpExt, SEXPTYPE};
-                unsafe {
-                    #extract_mut
-                    let raw_vec = value.coerce(SEXPTYPE::RAWSXP);
-                    if raw_vec.len() == 0 {
-                        return #err_value;
-                    }
-                    data.#field_name = raw_vec.raw_elt(0);
                     x
                 }
             }
