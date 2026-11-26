@@ -50,6 +50,22 @@ link, as a vendored install does. `R CMD check` of an unvendored
 check on R >= 4.5, whose symbol-table pass otherwise reads the Rust staticlib
 left in the package (#1795; see [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md)).
 
+## A release tarball builds with the features it was built with
+
+A release tarball's `R/<pkg>-wrappers.R`, `NAMESPACE` and `man/` describe the
+`#[miniextendr]` items its Cargo feature set compiled. The install that
+generated those wrappers recorded that set in `tools/cargo-features`, which
+ships in the tarball, and a tarball install builds with it when `CARGO_FEATURES`
+is unset (#1664). `tools/detect-features.R` is not consulted: on CRAN's
+machines a rule could decide otherwise (another R version, a missing optional R
+package, an older rustc) and drop an export the tarball documents.
+
+An explicit `CARGO_FEATURES` still overrides the record. If the override
+compiles other items, `tools/write-wrappers.R` stops the install and names both
+feature sets, rather than installing a package whose exports differ from its
+documentation (#1665). A recorded feature that can't build on the machine fails
+in Cargo. See [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#wrapper-generation).
+
 ## Where each install path lands
 
 | You ran | Mode | Vendor used? | How vendor was produced |

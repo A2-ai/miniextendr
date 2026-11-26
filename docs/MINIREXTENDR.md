@@ -299,6 +299,13 @@ add_feature_rule(
 `configure.ac` passes it to Cargo through `--features`. It does not invent
 custom `rustc --cfg` flags.
 
+The rules run where the package is built from source, not where a release
+tarball is installed. `tools/write-wrappers.R` records the features the wrappers
+were generated with in `tools/cargo-features` (gitignored, shipped in the
+tarball), and the tarball's `configure` builds with them, so its exports match
+its `NAMESPACE` and `man/` on every machine. `CARGO_FEATURES` overrides both
+(see [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md#wrapper-generation)).
+
 ## Vendoring
 
 ```r

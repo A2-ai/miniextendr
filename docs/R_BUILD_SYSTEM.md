@@ -94,9 +94,9 @@ relink, or any install from a tarball, does.
 Each writer replaces its file only when the content changed, so an unchanged
 file keeps its bytes and its mtime. Make therefore tracks the pass with a stamp,
 `rust-target/.miniextendr-wrappers`, not with the wrappers file: the stamp
-depends on `$(SHLIB)` and on the wrappers file, and a rule without a recipe
-makes a missing wrappers file (a fresh checkout, or a tarball built without
-one) count as changed. The result:
+depends on `$(SHLIB)`, on the wrappers file and on the feature record below,
+and a rule without a recipe makes a missing wrappers file or record (a fresh
+checkout, or a tarball built without one) count as changed. The result:
 
 - An install where nothing under `src/rust` changed runs Cargo (make always
   asks it), which compiles nothing. The shared library is not relinked and the
@@ -112,15 +112,32 @@ tarball for `devtools::install()`, or a plain `R CMD build`. A shipped wrappers
 file is compared with the freshly generated one like any other, so a tarball
 whose Rust sources moved on from its wrappers installs the current wrappers.
 
-A release tarball, one carrying `inst/vendor.tar.xz`, is checked instead. It
-ships the wrappers its `NAMESPACE` and `man/` were documented from, so
-`write-wrappers.R` generates into a copy and stops the install when the result
-differs. A difference means the install compiles other `#[miniextendr]` items
-than the build that made the tarball. The cause is another Cargo feature set
-(`CARGO_FEATURES`, or `tools/detect-features.R` deciding otherwise on this
-machine) or another target. Without the check, R's load test would fail on a
-missing export but only warn about a missing S3 method, so the package would
-install with broken dispatch.
+Every install that is not from a release tarball also records the Cargo
+features the wrappers were generated with, in `tools/cargo-features`: two comment lines, then the
+comma-separated list (empty for none). The file is rewritten only when the
+list changes. Like the wrappers it is gitignored and ships in the tarball from
+disk.
+
+A release tarball, one carrying `inst/vendor.tar.xz`, works differently:
+
+- **Feature set.** Its `configure` builds with the recorded features when
+  `CARGO_FEATURES` is unset. It does not run `tools/detect-features.R`, which
+  could decide otherwise on the installing machine (a rule on R's version, an
+  installed R package, rustc's version). A recorded feature that can't build
+  there fails in Cargo, which is the honest outcome for a feature the tarball
+  promises. A tarball without a record, built before the record existed, falls
+  back to the detection.
+- **Wrapper check.** The tarball ships the wrappers its `NAMESPACE` and `man/`
+  were documented from. `write-wrappers.R` generates into a copy, leaves the
+  record as it is, and stops the install when the result differs.
+  - A difference means the install compiles other `#[miniextendr]` items than
+    the build that made the tarball. The cause is another Cargo feature set
+    (an explicit `CARGO_FEATURES`, which still overrides the record, or
+    detection in a tarball without one) or another target.
+  - The error names the build's features and the recorded ones.
+  - Without the check, R's load test would fail on a missing export but only
+    warn about a missing S3 method, so the package would install with broken
+    dispatch.
 
 wasm32 is the exception to both: its `$(SHLIB)` is a SIDE_MODULE that host R
 cannot load, so a wasm build uses the files a host install generated.

@@ -19,7 +19,7 @@ single signal:
 
 | Variable | Purpose | Default |
 |----------|---------|---------|
-| `MINIEXTENDR_FEATURES` | Comma-separated cargo features to enable | All features except `nonapi` |
+| `CARGO_FEATURES` | Comma-separated cargo features to enable; set, even to `""`, it replaces the default | A release tarball: the features recorded in `tools/cargo-features`. Otherwise what `tools/detect-features.R` returns (rpkg falls back to every integration feature when it returns nothing) |
 | `CARGO_PROFILE` | Build profile: `dev` or `release` | `release` |
 | `CARGO_TARGET_DIR` | Artifact directory (must be outside `src/`) | `${abs_top_srcdir}/rust-target` |
 | `CARGO_BUILD_TARGET` | Rust target triple for cross-compilation | Empty (native); auto-detected from autoconf host |
@@ -30,7 +30,7 @@ single signal:
 All of the above are declared as `AC_ARG_VAR` in `configure.ac` and can be set when invoking `./configure`:
 
 ```bash
-cd rpkg && MINIEXTENDR_FEATURES="rayon,serde" CARGO_PROFILE=dev bash ./configure
+cd rpkg && CARGO_FEATURES="rayon,serde" CARGO_PROFILE=dev bash ./configure
 ```
 
 ## R Installation

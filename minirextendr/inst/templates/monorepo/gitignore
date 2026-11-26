@@ -18,6 +18,9 @@
 # (.Rbuildignore exempt).
 {{rpkg_name}}/R/*-wrappers.R
 {{rpkg_name}}/src/rust/wasm_registry.rs
+# The Cargo features the wrappers were generated with; ships in the tarball
+# from disk, whose configure builds with them.
+{{rpkg_name}}/tools/cargo-features
 {{rpkg_name}}/config.log
 {{rpkg_name}}/config.status
 {{rpkg_name}}/configure~

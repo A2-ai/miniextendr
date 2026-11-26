@@ -37,6 +37,7 @@ PKG_CPPFLAGS = $(NATIVE_PKG_CPPFLAGS)
 
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 WRAPPERS_R = $(ABS_TOP_SRCDIR)/R/@PACKAGE_NAME@-wrappers.R
+FEATURES_RECORD = $(ABS_TOP_SRCDIR)/tools/cargo-features
 # Last wrapper generation. The writers keep an unchanged wrappers file (and
 # src/rust/wasm_registry.rs) as it is, mtime included. A `$(WRAPPERS_R):
 # $(SHLIB)` rule would therefore stay out of date after every relink that
@@ -146,15 +147,17 @@ $(CARGO_AR): FORCE_CARGO $(OBJECTS)
 # man/ were documented from, so there the script stops when the build generates
 # different ones (other features or target than the tarball was built with).
 #
-# $(WRAPPERS_R) has a rule without a recipe: when the file is missing (a fresh
-# checkout, or a tarball built without it) make treats it as just made and
-# regenerates; when it exists, an edit newer than the stamp regenerates too.
+# $(WRAPPERS_R) and $(FEATURES_RECORD) (tools/cargo-features, the Cargo
+# features the wrappers were generated with) have rules without a recipe: when
+# one is missing (a fresh checkout, or a tarball built without it) make treats
+# it as just made and regenerates; when it exists, an edit newer than the stamp
+# regenerates too.
 #
 # wasm32 is the one exception: $(SHLIB) is a .wasm SIDE_MODULE that host R
 # cannot dyn.load, so the build uses the files a host install generated. The
 # test is a shell `if`, not a make conditional, so this Makevars stays portable
 # POSIX make (no "SystemRequirements: GNU make").
-$(WRAPPERS_STAMP): $(SHLIB) $(WRAPPERS_R)
+$(WRAPPERS_STAMP): $(SHLIB) $(WRAPPERS_R) $(FEATURES_RECORD)
 	@if [ "$(IS_WASM_INSTALL)" = "true" ]; then \
 	  echo "wasm32 install: using the pre-generated R/@PACKAGE_NAME@-wrappers.R and src/rust/wasm_registry.rs"; \
 	else \
@@ -165,5 +168,6 @@ $(WRAPPERS_STAMP): $(SHLIB) $(WRAPPERS_R)
 	@touch "$(WRAPPERS_STAMP)"
 
 $(WRAPPERS_R):
+$(FEATURES_RECORD):
 
 clean:

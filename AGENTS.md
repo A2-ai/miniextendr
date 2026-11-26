@@ -217,6 +217,10 @@ Never commit it or any other build artifact: CI's Generated Files Check (`just c
   by the same host pass. **Gitignored** for the same reason. Every native
   install, tarball installs included, regenerates it from the `.so` it links;
   `just r-cmd-build` ships it for wasm. Regenerate locally with `just rcmdinstall`.
+- `rpkg/tools/cargo-features` — the Cargo features the wrappers were generated
+  with, written by `tools/write-wrappers.R` in the same pass (not in a release
+  tarball install). **Gitignored**, ships in the tarball from disk; a release
+  tarball's `configure` builds with it when `CARGO_FEATURES` is unset (#1664).
 - `NAMESPACE` + `man/*.Rd` — derived (by roxygen2) from the regenerated
   wrappers.R + hand-written R. **Still tracked** (small, low-conflict). Run
   `just configure && just rcmdinstall && just devtools-document` after macro changes

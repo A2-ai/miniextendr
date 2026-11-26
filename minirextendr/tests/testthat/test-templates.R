@@ -284,6 +284,9 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
 # with other features would otherwise install a missing S3 method with only a
 # warning. The shared object the install left in src/ stands in for the
 # tarball's build, and an edited wrappers file for one that no longer matches.
+# Outside a release tarball the script records the build's features in
+# tools/cargo-features, which the tarball's configure reads (#1664); a release
+# tarball keeps the record it ships and names it in the error.
 test_that("write-wrappers.R keeps a release tarball's differing wrappers and stops", {
   skip_e2e()
   miniextendr_path <- find_miniextendr_repo()
@@ -311,22 +314,35 @@ test_that("write-wrappers.R keeps a release tarball's differing wrappers and sto
     ))
   }
 
+  # The install recorded the features detect-features.R picked.
+  record <- file.path(pkg_path, "tools", "cargo-features")
+  installed <- readLines(record)
+  detected <- utils::tail(installed, 1L)
+  expect_false(grepl("--features", detected, fixed = TRUE))
+
   generated <- readLines(wrappers)
   out <- write_wrappers("true")
   expect_null(attr(out, "status"))
   expect_identical(readLines(wrappers), generated)
+  expect_identical(readLines(record), installed)
 
   shipped <- c(generated, "stale_export <- function() NULL")
   writeLines(shipped, wrappers)
   out <- suppressWarnings(write_wrappers("true"))
   expect_false(is.null(attr(out, "status")))
   expect_true(any(grepl("different R wrappers than the wrapcheck tarball ships", out, fixed = TRUE)))
-  expect_true(any(grepl("Cargo features of this build: --features=extra", out, fixed = TRUE)))
+  expect_true(any(grepl(
+    paste0("Cargo features of this build: extra. The tarball was built with: ",
+           if (nzchar(detected)) detected else "none", "."),
+    out, fixed = TRUE)))
+  expect_identical(readLines(record), installed)
   expect_identical(readLines(wrappers), shipped)
 
   out <- write_wrappers("false")
   expect_null(attr(out, "status"))
   expect_identical(readLines(wrappers), generated)
+  expect_identical(utils::tail(readLines(record), 1L), "extra")
+  expect_identical(sum(!startsWith(readLines(record), "#")), 1L)
 })
 
 # write-wrappers.R passes the package's R/ directory to the wrapper writer, so

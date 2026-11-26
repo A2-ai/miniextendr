@@ -180,6 +180,20 @@ dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
 AC_ARG_VAR([CARGO_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
 
+dnl A release tarball builds with the features recorded in tools/cargo-features,
+dnl the ones its R wrappers, NAMESPACE and man/ were generated with
+dnl (tools/write-wrappers.R writes the file in every other install).
+dnl detect-features.R on this machine could decide otherwise and compile other
+dnl #[miniextendr] items than the tarball documents. An empty record means no
+dnl features: setting CARGO_FEATURES, even to "", skips the detection below.
+dnl CARGO_FEATURES still overrides the record; write-wrappers.R stops the
+dnl install when that changes the wrappers.
+if test -z "${CARGO_FEATURES+x}" && test "$IS_TARBALL_INSTALL" = "true" \
+   && test -f "${srcdir}/tools/cargo-features"; then
+  CARGO_FEATURES=$(sed '/^#/d' "${srcdir}/tools/cargo-features" | tr -d ' \r\n')
+  AC_MSG_NOTICE([Cargo features recorded in the tarball: ${CARGO_FEATURES:-none}])
+fi
+
 if test -z "${CARGO_FEATURES+x}"; then
   if test -f "${srcdir}/tools/detect-features.R"; then
     CARGO_FEATURES=$("${R_HOME}/bin/Rscript" "${srcdir}/tools/detect-features.R" 2>/dev/null || echo "")

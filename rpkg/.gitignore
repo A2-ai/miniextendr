@@ -18,6 +18,10 @@ src/*-wrappers.R
 # (wasm-from-tarball has no fallback).
 R/*-wrappers.R
 src/rust/wasm_registry.rs
+# The Cargo features those wrappers were generated with, written next to them
+# by tools/write-wrappers.R. Ships in the tarball from disk too: a release
+# tarball's configure builds with these features (#1664).
+tools/cargo-features
 
 # Built artifacts
 src/*.o
