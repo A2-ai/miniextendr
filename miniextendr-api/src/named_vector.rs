@@ -355,3 +355,221 @@ impl<V: AtomicElement> TryFromSexp for NamedVector<BTreeMap<String, V>> {
     }
 }
 // endregion
+
+// region: NamedVec
+
+/// A vector's values and its names, in order, duplicate names included
+/// (#1945).
+///
+/// [`NamedVector`] reads a named vector into a map, which needs unique names
+/// and forgets their order. `NamedVec<T>` keeps the vector as it is, for a
+/// vector whose order means something (the state, derivative and tolerance
+/// order of an ODE system):
+///
+/// - **Values** convert exactly as `Vec<T>` converts the vector, so `NA`
+///   follows `T`: `NamedVec<f64>` keeps `NA_real_`, `NamedVec<i32>` keeps
+///   `NA_integer_` as `i32::MIN`, `NamedVec<Option<f64>>` reads it as `None`
+///   and `NamedVec<bool>` refuses it. The R type must be the one `Vec<T>`
+///   takes, so an integer vector is not a `NamedVec<f64>`. A named list reads
+///   as `NamedVec<Vec<T>>` (each element a vector) or `NamedVec<List>`.
+/// - **Names** are `None` without a `names` attribute, else one per value in
+///   order. Duplicates are kept (check uniqueness yourself if you need it),
+///   and an empty name is `""`. An `NA` name has no `String` form, so it is
+///   refused, with every `NA` position in the message.
+/// - **Refused:** a matrix or array (a `dim` attribute) and a classed object
+///   (a factor, `Date`, `difftime`, ...), whose values would lose their
+///   meaning as plain numbers. Pass `c(x)` or `unclass(x)` to read the values
+///   anyway. Other attributes are ignored; [`NamedVec::sexp`] still has them.
+/// - **`Option<NamedVec<T>>`** reads `NULL` as `None`.
+/// - **Returned to R,** it is the values (as `Vec<T>` returns them) with the
+///   names set, so a named vector read in comes back unchanged, minus any
+///   other attributes.
+///
+/// ```ignore
+/// #[miniextendr]
+/// pub fn scaled(x: NamedVec<f64>, by: f64) -> NamedVec<f64> {
+///     let (values, names) = x.into_parts();
+///     NamedVec::new(values.into_iter().map(|v| v * by).collect(), names)
+/// }
+/// // In R: scaled(c(y = 1, dy = 2), 10) is c(y = 10, dy = 20)
+/// ```
+#[derive(Debug, Clone)]
+pub struct NamedVec<T> {
+    values: Vec<T>,
+    names: Option<Vec<String>>,
+    sexp: Option<SEXP>,
+}
+
+impl<T> NamedVec<T> {
+    /// Values with names, or without (`None`), to return to R.
+    ///
+    /// # Panics
+    ///
+    /// When `names` is `Some` and its length differs from `values`'.
+    pub fn new(values: Vec<T>, names: Option<Vec<String>>) -> Self {
+        if let Some(names) = &names {
+            assert_eq!(
+                names.len(),
+                values.len(),
+                "NamedVec::new: {} names for {} values",
+                names.len(),
+                values.len()
+            );
+        }
+        NamedVec {
+            values,
+            names,
+            sexp: None,
+        }
+    }
+
+    /// The values, in order.
+    pub fn values(&self) -> &[T] {
+        &self.values
+    }
+
+    /// The names, one per value in order, or `None` when the vector had no
+    /// `names` attribute.
+    pub fn names(&self) -> Option<&[String]> {
+        self.names.as_deref()
+    }
+
+    /// The R vector this was read from, `None` for one made with
+    /// [`NamedVec::new`]. It is the argument of the call that received it:
+    /// valid for that call and not rooted, so don't keep it past the call.
+    pub fn sexp(&self) -> Option<SEXP> {
+        self.sexp
+    }
+
+    /// The values and the names.
+    pub fn into_parts(self) -> (Vec<T>, Option<Vec<String>>) {
+        (self.values, self.names)
+    }
+}
+
+/// Refuse what [`NamedVec`] does not read: a `dim` attribute (a matrix or an
+/// array) and a class attribute.
+fn refuse_shaped_or_classed(sexp: SEXP) -> Result<(), SexpError> {
+    if !sexp.get_dim().is_nil() {
+        return Err(SexpError::InvalidValue(
+            "got a matrix or array (it has a dim attribute); c() drops it".to_string(),
+        ));
+    }
+    let class = sexp.get_class();
+    if !class.is_nil() {
+        let class = <Vec<String>>::try_from_sexp(class)?;
+        let class = class
+            .iter()
+            .map(|c| format!("\"{c}\""))
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(SexpError::InvalidValue(format!(
+            "got an object of class {class}; unclass() drops it"
+        )));
+    }
+    Ok(())
+}
+
+/// The vector's names for [`NamedVec`]: `None` without the attribute, an
+/// error naming every `NA` position.
+fn names_in_order(sexp: SEXP) -> Result<Option<Vec<String>>, SexpError> {
+    let names = sexp.get_names();
+    if names.is_nil() {
+        return Ok(None);
+    }
+    let names = <Vec<Option<String>>>::try_from_sexp(names)?;
+    let na: Vec<String> = names
+        .iter()
+        .enumerate()
+        .filter(|(_, name)| name.is_none())
+        .map(|(i, _)| (i + 1).to_string())
+        .collect();
+    if !na.is_empty() {
+        return Err(SexpError::InvalidValue(format!(
+            "NA names at position{} {}",
+            if na.len() == 1 { "" } else { "s" },
+            na.join(", ")
+        )));
+    }
+    Ok(Some(names.into_iter().flatten().collect()))
+}
+
+impl<T> TryFromSexp for NamedVec<T>
+where
+    Vec<T>: TryFromSexp<Error = SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        refuse_shaped_or_classed(sexp)?;
+        let values = <Vec<T>>::try_from_sexp(sexp)?;
+        let names = names_in_order(sexp)?;
+        Ok(NamedVec {
+            values,
+            names,
+            sexp: Some(sexp),
+        })
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        refuse_shaped_or_classed(sexp)?;
+        let values = unsafe { <Vec<T>>::try_from_sexp_unchecked(sexp) }?;
+        let names = names_in_order(sexp)?;
+        Ok(NamedVec {
+            values,
+            names,
+            sexp: Some(sexp),
+        })
+    }
+}
+
+impl<T> TryFromSexp for Option<NamedVec<T>>
+where
+    Vec<T>: TryFromSexp<Error = SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.is_nil() {
+            return Ok(None);
+        }
+        <NamedVec<T>>::try_from_sexp(sexp).map(Some)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.is_nil() {
+            return Ok(None);
+        }
+        unsafe { <NamedVec<T>>::try_from_sexp_unchecked(sexp) }.map(Some)
+    }
+}
+
+impl<T> IntoR for NamedVec<T>
+where
+    Vec<T>: IntoR,
+{
+    type Error = <Vec<T> as IntoR>::Error;
+
+    fn try_into_sexp(self) -> Result<SEXP, Self::Error> {
+        let sexp = self.values.try_into_sexp()?;
+        if let Some(names) = &self.names {
+            unsafe {
+                let guard = OwnedProtect::new(sexp);
+                set_names_on_sexp(guard.get(), names);
+            }
+        }
+        Ok(sexp)
+    }
+
+    unsafe fn try_into_sexp_unchecked(self) -> Result<SEXP, Self::Error> {
+        let sexp = unsafe { self.values.try_into_sexp_unchecked() }?;
+        if let Some(names) = &self.names {
+            unsafe {
+                let guard = OwnedProtect::new(sexp);
+                set_names_on_sexp(guard.get(), names);
+            }
+        }
+        Ok(sexp)
+    }
+}
+// endregion

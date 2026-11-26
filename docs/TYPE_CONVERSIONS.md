@@ -656,7 +656,8 @@ pub fn settings_count(settings: List) -> i32 {
 `first_duplicate_name` skips `NA` and empty names. The conversions that would
 have to drop a value refuse a repeated name themselves: `HashMap` / `BTreeMap`
 (from a list or via `TryFromList`), `NamedVector`, `typed_list!` specs, and a
-`#[derive(TryFromList)]` struct whose field name appears twice.
+`#[derive(TryFromList)]` struct whose field name appears twice. `NamedVec<T>`
+keeps every value and its name, repeated or not.
 
 ### Data Frames
 
@@ -870,6 +871,45 @@ pub fn get_option(config: NamedList) -> Option<String> {
 **When to use**: `List::get_named()` is fine for a single lookup. Use `NamedList` when you need multiple lookups on the same list (O(n) build + O(1) per lookup vs O(n) per lookup).
 
 `NamedList` implements `TryFromSexp`, so it can be used directly as a function parameter. `NA` and empty-string names are excluded from the index; a repeated name resolves to its first occurrence, as `x[["name"]]` does in R.
+
+### A vector and its names, in order (`NamedVec<T>`)
+
+`NamedVec<T>` reads a vector together with its names and keeps both in
+order, repeated names included. Use it when the order means something, such
+as the state, derivative and tolerance order of an ODE system:
+
+```rust
+use miniextendr_api::{NamedVec, miniextendr};
+
+#[miniextendr]
+pub fn scaled(x: NamedVec<f64>, by: f64) -> NamedVec<f64> {
+    let (values, names) = x.into_parts();
+    NamedVec::new(values.into_iter().map(|v| v * by).collect(), names)
+}
+// scaled(c(y = 1, dy = 2, y = 3), 10)  #> c(y = 10, dy = 20, y = 30)
+```
+
+- **Values** convert as `Vec<T>` converts the vector, so `NA` follows `T`:
+  `NamedVec<f64>` keeps `NA_real_`, `NamedVec<i32>` keeps `NA_integer_` as
+  `i32::MIN`, `NamedVec<Option<f64>>` reads it as `None` and `NamedVec<bool>`
+  refuses it. The R type must be the one `Vec<T>` takes, so an integer vector
+  is not a `NamedVec<f64>`. A named list reads as `NamedVec<Vec<T>>` or
+  `NamedVec<List>`.
+- **Names** (`names()`) are `None` without a `names` attribute, else one
+  `String` per value. Repeated names are kept; check uniqueness yourself if
+  you need it. An empty name is `""`. An `NA` name has no `String` form, so it
+  is refused, and the error lists every `NA` position.
+- **Refused:** a matrix or array (a `dim` attribute) and a classed object (a
+  factor, `Date`, `difftime`, ...), whose values would lose their meaning as
+  plain numbers. The error says so; `c(x)` or `unclass(x)` passes the values.
+  Other attributes are ignored.
+- **`Option<NamedVec<T>>`** reads `NULL` as `None`.
+- **Returned,** a `NamedVec<T>` gives the values (as `Vec<T>` returns them)
+  with the names set. `sexp()` is the argument it was read from, valid for
+  the call only.
+
+`NamedVector<M>` (below) reads into a map instead, which needs unique names
+and forgets their order.
 
 ### Returning name/value pairs (`AsNamedList`, `AsNamedVector`)
 

@@ -635,6 +635,116 @@ test_that("extension traits (.as_named_vector / .as_named_list) work", {
   expect_equal(list_res$two, 2L)
 })
 
+# ── NamedVec<T> (values and names in order, #1945) ──────────────────────────
+
+test_that("NamedVec<f64> round-trips values and names in order", {
+  x <- c(y = 1, dy = 2, tol = 0.5)
+  expect_identical(miniextendr:::conv_named_vec_scaled(x, 10), c(y = 10, dy = 20, tol = 5))
+  expect_identical(miniextendr:::conv_named_vec_scaled(c(y = 1), 1), c(y = 1))
+  expect_identical(miniextendr:::conv_named_vec_scaled(numeric(), 2), numeric())
+})
+
+test_that("NamedVec keeps duplicate and empty names", {
+  x <- c(a = 1, a = 2, 3, b = 4)
+  expect_identical(miniextendr:::conv_named_vec_names(x), c("a", "a", "", "b"))
+  expect_identical(miniextendr:::conv_named_vec_scaled(x, 1), x)
+})
+
+test_that("NamedVec without names reads None and returns no names", {
+  expect_null(miniextendr:::conv_named_vec_names(c(1, 2)))
+  res <- miniextendr:::conv_named_vec_scaled(c(1, 2), 2)
+  expect_identical(res, c(2, 4))
+  expect_null(names(res))
+})
+
+test_that("NamedVec values follow T: NA, R type, strings, lists", {
+  x <- c(a = 1, b = NA, c = 3)
+  expect_identical(miniextendr:::conv_named_vec_scaled(x, 2), c(a = 2, b = NA, c = 6))
+  expect_identical(miniextendr:::conv_named_vec_none_at(x), c(FALSE, TRUE, FALSE))
+  # Vec<i32> reads NA_integer_ as i32::MIN, which goes back as NA.
+  expect_identical(miniextendr:::conv_named_vec_i32(c(a = 1L, b = NA)), c(a = 1L, b = NA))
+  expect_identical(miniextendr:::conv_named_vec_bool(c(a = TRUE, b = FALSE)), c(a = TRUE, b = FALSE))
+  expect_error(
+    miniextendr:::conv_named_vec_bool(c(a = TRUE, b = NA)),
+    class = "rust_error"
+  )
+  # The R type is the one Vec<T> takes: an integer vector is not a NamedVec<f64>.
+  expect_error(
+    miniextendr:::conv_named_vec_scaled(c(a = 1L, b = 2L), 1),
+    "expected numeric, got integer",
+    class = "rust_error"
+  )
+  expect_identical(
+    miniextendr:::conv_named_vec_strings(c(first = "x", second = "y")),
+    c(first = "x", second = "y")
+  )
+  expect_identical(
+    miniextendr:::conv_named_vec_list_sums(list(p = c(1, 2), q = 3, p = numeric())),
+    c(p = 3, q = 3, p = 0)
+  )
+})
+
+test_that("NamedVec refuses a matrix and a classed object, saying why", {
+  expect_error(
+    miniextendr:::conv_named_vec_scaled(matrix(c(1, 2, 3, 4), 2), 1),
+    "matrix or array.*c\\(\\) drops it",
+    class = "rust_error"
+  )
+  expect_error(
+    miniextendr:::conv_named_vec_scaled(as.Date("2026-01-01"), 1),
+    "class \"Date\"; unclass\\(\\) drops it",
+    class = "rust_error"
+  )
+  expect_error(
+    miniextendr:::conv_named_vec_strings(factor(c(a = "x"))),
+    "class \"factor\"",
+    class = "rust_error"
+  )
+  expect_error(
+    miniextendr:::conv_named_vec_scaled(structure(1, class = c("b", "a")), 1),
+    "class \"b\", \"a\"",
+    class = "rust_error"
+  )
+  # The ways out the message names.
+  expect_identical(miniextendr:::conv_named_vec_scaled(c(matrix(c(1, 2), 1)), 1), c(1, 2))
+  expect_identical(miniextendr:::conv_named_vec_scaled(unclass(as.Date("1970-01-03")), 1), 2)
+})
+
+test_that("NamedVec refuses NA names, listing every position", {
+  expect_error(
+    miniextendr:::conv_named_vec_scaled(setNames(c(1, 2), c("a", NA)), 1),
+    "NA names at position 2$",
+    class = "rust_error"
+  )
+  expect_error(
+    miniextendr:::conv_named_vec_scaled(setNames(c(1, 2, 3), c(NA, "b", NA)), 1),
+    "NA names at positions 1, 3$",
+    class = "rust_error"
+  )
+})
+
+test_that("Option<NamedVec<f64>> reads NULL as None", {
+  expect_false(miniextendr:::conv_named_vec_is_some(NULL))
+  expect_true(miniextendr:::conv_named_vec_is_some(c(a = 1)))
+  expect_true(miniextendr:::conv_named_vec_is_some(numeric()))
+})
+
+test_that("NamedVec::sexp is the argument, other attributes included", {
+  x <- c(a = 1, b = 2)
+  attr(x, "note") <- "kept"
+  expect_identical(miniextendr:::conv_named_vec_sexp(x), x)
+  # The converted values carry only the names.
+  expect_identical(miniextendr:::conv_named_vec_scaled(x, 1), c(a = 1, b = 2))
+})
+
+test_that("NamedVec::new refuses names that don't match the values", {
+  expect_error(
+    miniextendr:::conv_named_vec_new_short_names(),
+    "1 names for 2 values",
+    class = "rust_error"
+  )
+})
+
 # ── NamedList (O(1) lookup wrapper) ──────────────────────────────────────────
 
 test_that("NamedList get retrieves entries by name", {
