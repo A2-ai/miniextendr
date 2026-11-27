@@ -4,8 +4,8 @@
 //! Standalone `#[miniextendr]` functions run on the R main thread by default,
 //! which is exactly what the expression module requires. `RCall::eval` and
 //! `r_eval_str` catch an R error as `Err(REvalError)`, R's condition, never a
-//! longjmp through Rust frames. Returned from a function, the `Err` is raised
-//! again with the caught message and classes.
+//! longjmp through Rust frames. Returned from a function, the `Err` raises
+//! R's condition object again as it is.
 //!
 //! See docs/EXPRESSION_EVAL.md.
 
@@ -179,7 +179,7 @@ pub fn expr_symbol_value(env: SEXP, name: &str) -> Result<SEXP, REvalError> {
 
 /// Call `f()` through `RCall::eval_base`: `list(value = <value>)`, or, when
 /// it raises an R error, the caught `REvalError`'s parts:
-/// `list(message, classes, specific_classes, call, condition)`.
+/// `list(message, classes, call, condition)`.
 #[miniextendr(noexport)]
 pub fn expr_catch_error(f: SEXP) -> SEXP {
     // SAFETY: R's main thread; `f` is the rooted `.Call()` argument.
@@ -210,11 +210,9 @@ pub(crate) fn caught_parts(result: Result<SEXP, REvalError>) -> SEXP {
         let scope = ProtectScope::new();
         let message = scope.protect_raw(SEXP::scalar_string_from_str(error.message()));
         let classes = scope.protect_raw(strings(error.classes()));
-        let specific = scope.protect_raw(strings(error.specific_classes()));
         List::from_raw_pairs(vec![
             ("message", message),
             ("classes", classes),
-            ("specific_classes", specific),
             ("call", error.call().unwrap_or(SEXP::nil())),
             ("condition", error.condition()),
         ])
@@ -228,13 +226,31 @@ fn strings(values: &[String]) -> SEXP {
 }
 
 /// Call `f()` through `RCall::eval_base` and, when it raises an R error, raise
-/// the package's own `mx_reraised` error with R's message, the caught classes
-/// kept after it (`REvalError::reraise_class`).
+/// the package's own `mx_reraised` error with R's message.
 #[miniextendr(noexport)]
-pub fn expr_reraise(f: SEXP) -> SEXP {
+pub fn expr_raise_own(f: SEXP) -> SEXP {
     // SAFETY: R's main thread; `f` is the rooted `.Call()` argument.
     match unsafe { RCall::from_sexp(f).eval_base() } {
         Ok(value) => value,
-        Err(e) => rust_error!(class = e.reraise_class("mx_reraised"), "{e}"),
+        Err(e) => rust_error!(class = "mx_reraised", "{e}"),
     }
+}
+
+/// Queue a warning, then call `f()` through `RCall::eval_base` and return its
+/// error as the `Err`: R's condition is raised as it is, after the warning.
+#[miniextendr(noexport)]
+pub fn expr_return_err(f: SEXP) -> Result<SEXP, REvalError> {
+    miniextendr_api::defer_warning!("queued before the error");
+    // SAFETY: R's main thread; `f` is the rooted `.Call()` argument.
+    unsafe { RCall::from_sexp(f).eval_base() }
+}
+
+/// [`expr_return_err`] for R source parsed and evaluated by `r_eval_str`: a
+/// parse failure is an error Rust built, with no R condition to raise.
+/// @param code Character scalar of R source.
+#[miniextendr(noexport)]
+pub fn expr_return_err_str(code: &str) -> Result<SEXP, REvalError> {
+    miniextendr_api::defer_warning!("queued before the error");
+    // SAFETY: R's main thread.
+    unsafe { r_eval_str_global(code) }
 }

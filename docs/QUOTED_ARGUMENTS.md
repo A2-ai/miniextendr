@@ -281,9 +281,8 @@ warning or message the caller muffles just returns, and evaluation goes on.
 So use it for code the user wrote or whose conditions are part of an
 interface (a callback, a tidyselect selection, a deprecation warning), and
 keep `RCall::eval` for internal calls whose failure the Rust code handles
-itself; `REvalError::reraise_class` raises a caught error again under the
-package's class with R's classes kept
-([CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error-as-your-own)). The
+itself, raising R's condition as it is or its own with R's message
+([CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error)). The
 framework's own calls into user R code (`as.character()` dispatch, S4
 `slot()`) still go through `RCall::eval` (#1840).
 
@@ -338,7 +337,7 @@ let out = unsafe {
         .named_arg("drop", drop)
         .try_eval_with_handlers(R_BaseEnv)
 }
-.unwrap_or_else(|e| rust_error!(class = e.reraise_class("pkg_subset_error"), "{e}"));
+.unwrap_or_else(|e| rust_error!(class = "pkg_subset_error", "{e}"));
 ```
 
 ```r
@@ -387,9 +386,10 @@ let keep = match subset.try_eval_in(table) {
 handlers see it and the exit leaves through the Rust frames, under the two
 rules above. Its classes, message and fields are R's; its call is
 `e.call()`, so an error at the top of the expression reports no call rather
-than R's `tryCatch()` frame. `rust_error!(class = e.reraise_class(..), "{e}")`
+than R's `tryCatch()` frame. Returning `e` as the function's `Err` raises the
+same object once the function returns; `rust_error!(class = .., "{e}")`
 raises the package's own condition instead
-([CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error-as-your-own)).
+([CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error)).
 `reraise()` is `unsafe` because the unwind must reach a miniextendr boundary.
 
 ## Tests

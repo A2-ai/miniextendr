@@ -40,13 +40,10 @@ fn embedded_scalar_returns_a_provider_error_without_an_mx_boundary() {
             let Err(SexpError::Condition(error)) = result else {
                 panic!("expected the provider's condition, got {result:?}");
             };
-            assert!(
-                error
-                    .classes()
-                    .iter()
-                    .any(|class| class == "embedded_scalar_error")
-            );
+            // R's message; R's classes belong with R's condition object, not
+            // on the condition miniextendr would build from this error.
             assert_eq!(error.message_str(), "embedded element failed");
+            assert!(error.classes().is_empty(), "{:?}", error.classes());
         }
     });
 }
@@ -142,12 +139,8 @@ fn matrix_metadata_unwinds_owners_and_preserves_provider_errors() {
         else {
             panic!("expected a condition from dimension rank admission");
         };
-        assert!(
-            error
-                .classes()
-                .iter()
-                .any(|class| class == "matrix_length_error")
-        );
+        assert_eq!(error.message_str(), "length failed");
+        assert!(error.classes().is_empty(), "{:?}", error.classes());
     });
 }
 
@@ -203,12 +196,7 @@ fn standalone_matrix_cell_panics_and_column_returns_provider_condition() {
             panic!("standalone column read should return a provider condition");
         };
         assert_eq!(error.message_str(), "matrix read failed");
-        assert!(
-            error
-                .classes()
-                .iter()
-                .any(|class| class == "matrix_read_error")
-        );
+        assert!(error.classes().is_empty(), "{:?}", error.classes());
         let column = matrix.copy_column_to_r(0).unwrap();
         assert_eq!(column.real_elt(0), 17.0);
     });

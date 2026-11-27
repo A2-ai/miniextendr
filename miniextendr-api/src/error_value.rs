@@ -234,14 +234,24 @@ pub(crate) unsafe fn condition_parts_value(
 ) -> SEXP {
     // SAFETY: forwarded from the caller.
     unsafe {
-        make_rust_condition_value_with_data(
+        let value = make_rust_condition_value_with_data(
             &parts.message,
             kind,
             &parts.class,
             call,
             parts.data,
             parts.call,
-        )
+        );
+        // R's own condition object goes in the message slot, where the R
+        // helper raises it as it is. Copying it without the `tryCatch()`
+        // frame's call allocates, so the value is protected meanwhile; the
+        // error that gave `cond` roots it.
+        if let Some(cond) = parts.r_condition {
+            let scope = crate::ProtectScope::new();
+            let value = scope.protect_raw(value);
+            value.set_vector_elt(0, crate::expression::without_try_catch_frame_call(cond));
+        }
+        value
     }
 }
 

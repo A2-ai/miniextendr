@@ -3628,6 +3628,10 @@ macro_rules! raise_condition_helper_fn {
             r#"function(.val, .call_default) {
   # The condition object for one tagged value `.v`.
   .cond <- function(.v) {
+    # A condition object in the message slot is the error R raised, which an
+    # `Err(REvalError)` returns: raised as it is, with R's classes, fields and
+    # call.
+    if (inherits(.v$error, "condition")) return(.v$error)
     .msg <- .v$error
     # `.v$call` is the call the Rust side captured, NULL to use the wrapper's
     # call, or FALSE for a condition raised without one (`call = none`, R's

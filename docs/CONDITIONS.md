@@ -28,8 +28,9 @@ or `call = <expr>`, which raises it with a call the function builds (see
 that already derive `serde::Serialize`, through
 [the serde shape](#deriving-the-classes-from-a-serde-error-type). An R error
 caught by `RCall::eval`, `r_eval_str` or `try_eval_with_handlers` (an
-`REvalError`) is raised again the same ways, keeping R's message and classes (see
-[Raising a caught R error as your own](#raising-a-caught-r-error-as-your-own)).
+`REvalError`) is raised again as it is when a function returns it as its `Err`,
+or as the package's own condition with R's message (see
+[Raising a caught R error](#raising-a-caught-r-error)).
 
 A fifth macro, `arg_error!(param = "x", …)`, raises the condition of the
 wrapper's own argument checks from a body (see
@@ -1112,11 +1113,11 @@ pub fn restore(path: &str) -> Restored {
   passed on with `?` from a function returning
   `Result<_, RCondition>`, which raises it as an error with its classes and
   fields ([above](#classed-result-errors-with-rconditiondata-and-rerror)).
-- To get an R error back as a value, evaluate the R code with `try_eval_with_handlers` (or `RCall::try_eval_with_handlers`), which returns `Err(REvalError)`; `REvalError::reraise_class` gives the classes to raise it again as your own (next section).
+- To get an R error back as a value, evaluate the R code with `try_eval_with_handlers` (or `RCall::try_eval_with_handlers`), which returns `Err(REvalError)`: return it to raise R's condition as it is, or raise your own with its message (next section).
 - Deferred conditions queued inside `f` stay queued; [`capture`](#deferred-conditions-a-warning-and-a-value) takes them.
 - A caught raise still runs the panic hook: with `MINIEXTENDR_BACKTRACE=true` it prints the panic to stderr.
 
-## Raising a caught R error as your own
+## Raising a caught R error
 
 `RCall::eval`, `eval_base` and `r_eval_str` catch an R error as
 `expression::REvalError`, and so do `RCall::try_eval_with_handlers` and
@@ -1126,69 +1127,72 @@ messages to the caller's handlers
 `REvalError` holds R's condition: `message()` (R's
 `conditionMessage()`, without the `Error in <call> :` prefix and the `Calls:`
 line R prints), `call()`, `classes()` and the condition object
-([EXPRESSION_EVAL.md](EXPRESSION_EVAL.md#error-handling)). Three ways raise it
-again from a `#[miniextendr]` function, each keeping R's message as the
-message:
+([EXPRESSION_EVAL.md](EXPRESSION_EVAL.md#error-handling)). A
+`#[miniextendr]` function raises it as it is, or raises its own condition
+with R's message:
 
 ```rust
 use miniextendr_api::expression::{RCall, REvalError};
 use miniextendr_api::condition::RError;
 use miniextendr_api::{miniextendr, rust_error, SEXP};
 
-// 1. The package's class first, the caught classes after it.
+// 1. Returned as the `Err`: R's condition object, unchanged.
 #[miniextendr]
-pub fn summarise(df: SEXP) -> SEXP {
-    match unsafe { RCall::new("summary").arg(df).eval_base() } {
-        Ok(value) => value,
-        Err(e) => rust_error!(class = e.reraise_class("pkg_summary_error"), "{e}"),
-    }
+pub fn summarise(df: SEXP) -> Result<SEXP, REvalError> {
+    unsafe { RCall::new("summary").arg(df).eval_base() }
 }
 
-// 2. Returned as is: the caught classes, then the `rust_error` layers.
+// 2. The package's own condition, with R's message.
 #[miniextendr]
-pub fn summarise_plain(df: SEXP) -> Result<SEXP, REvalError> {
-    unsafe { RCall::new("summary").arg(df).eval_base() }
+pub fn summarise_own(df: SEXP) -> SEXP {
+    match unsafe { RCall::new("summary").arg(df).eval_base() } {
+        Ok(value) => value,
+        Err(e) => rust_error!(class = "pkg_summary_error", "{e}"),
+    }
 }
 
 // 3. Through `RError`, for data fields or to carry it off R's main thread.
 #[miniextendr]
 pub fn summarise_with_data(df: SEXP) -> Result<SEXP, RError> {
-    unsafe { RCall::new("summary").arg(df).eval_base() }.map_err(|e| {
-        let class = e.reraise_class("pkg_summary_error");
-        RError::from(e).class(class).data("step", "summary")
-    })
+    unsafe { RCall::new("summary").arg(df).eval_base() }
+        .map_err(|e| RError::from(e).class("pkg_summary_error").data("step", "summary"))
 }
 ```
 
-For an error R raised as `errorCondition("…", class = "vctrs_error_x")`, the
-first form gives
+The first form raises the condition R raised: its classes, its fields
+(`e$i` of a vctrs subscript error, `rlang`'s `body` and `parent`), its
+message and its call. A handler, or a `conditionMessage()` method, for its
+classes sees the object R made, as if the function had not caught it. An error
+raised at the top of the evaluated code reports no call rather than the
+`doTryCatch(...)` call of R's `tryCatch()` frame. The warnings and messages
+the function queued are signalled first, as for any `Err`. For an error R
+raised as `errorCondition("…", class = "vctrs_error_x")`:
 
 ```r
 e <- tryCatch(summarise(x), error = function(e) e)
 class(e)
-# [1] "pkg_summary_error" "vctrs_error_x" "rust_error" "simpleError" "error" "condition"
+# [1] "vctrs_error_x" "error" "condition"
 ```
 
-`reraise_class(own)` puts `own` (one class or several, most specific first)
-ahead of the caught `specific_classes()`: R's classes without the trailing
-`rust_error`, `simpleError`, `error` and `condition` layers, which the macro
-adds back once. A plain `stop("…")` has no specific class, so the result is
-`c(own, "rust_error", "simpleError", "error", "condition")`. A handler for the
-package's class, or for the class R raised, catches it either way.
+A failure Rust built has no R condition to raise: a parse failure in
+`r_eval_str`, an evaluation that jumped to the top level without an error,
+a result `eval_as` can't read. The first form raises its message as the
+function's own error (`rust_error`, the function's call).
 
-The raised condition's call is the `#[miniextendr]` function's own, as for
-any condition the function raises; `e.call()` is the call R recorded, there
-for a message that wants it. Fields of the caught condition other than its
-message (`rlang`'s `body` or `parent`, say) are not copied; read them from
-`e.condition()` and attach the ones a handler needs with `data =`. A `data =`
-value can't be an R object, so the caught R condition itself can't be kept as
-the new one's `parent` yet (#1874); a condition raised in Rust can, with
+The second and third forms raise the package's condition: its classes, then
+`rust_error`, R's message, and the `#[miniextendr]` function's own call, as
+for any condition the function raises. `e.classes()` and `e.call()` are what
+R recorded, for a message that wants them. Fields of the caught condition
+other than its message are not copied; read them from `e.condition()` and
+attach the ones a handler needs with `data =`. A `data =` value can't be an R
+object, so the caught R condition itself can't be kept as the new one's
+`parent` yet (#1874); a condition raised in Rust can, with
 [`with_parent`](#chaining-a-cause-with-parent).
 
-To raise the caught condition itself, unchanged (R's classes and fields, no
-`rust_error` class, R's call), use `unsafe { e.reraise() }` inside the
-`#[miniextendr]` call: it signals the condition again through base
-`stop(cond)`, and the Rust frames drop their values on the way out (#2163,
+`unsafe { e.reraise() }` raises the caught condition at once, inside the
+`#[miniextendr]` call, as the first form does once the function returns: it
+signals the condition again through base `stop(cond)`, and the Rust frames
+drop their values on the way out (#2163,
 [QUOTED_ARGUMENTS.md](QUOTED_ARGUMENTS.md#an-r-error-returned-as-err)).
 
 `REvalError` is `!Send`: dropping it releases the condition's root, which

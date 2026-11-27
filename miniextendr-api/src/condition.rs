@@ -368,6 +368,7 @@ impl RCondition {
         (
             self.kind.as_str(),
             ErrParts {
+                r_condition: None,
                 message: self.message,
                 class: self.class,
                 data: self.data,
@@ -1700,6 +1701,17 @@ pub trait RConditionData {
     fn __mx_keeps_internal_fields(&self) -> bool {
         false
     }
+
+    /// Internal: the R condition object an `Err` arm raises as it is, in
+    /// place of a condition built from the other methods. An
+    /// [`REvalError`](crate::expression::REvalError) gives the error R raised,
+    /// so a returned `Err(e)` is R's own condition: its classes, fields and
+    /// call, which methods for those classes read. The value must stay rooted
+    /// for as long as `self` lives.
+    #[doc(hidden)]
+    fn __mx_r_condition(&self) -> Option<crate::SEXP> {
+        None
+    }
 }
 
 /// [`check_condition_data`] for an `Err` arm's fields, passing the
@@ -2057,6 +2069,12 @@ impl std::error::Error for ArgError {}
 #[doc(hidden)]
 #[derive(Debug)]
 pub struct ErrParts {
+    /// R's own condition object, raised as it is instead of a condition
+    /// built from the other parts: the error R raised that an
+    /// [`REvalError`](crate::expression::REvalError) holds
+    /// ([`RConditionData::__mx_r_condition`]). The error roots it while the
+    /// `Err` arm builds the tagged value from these parts.
+    pub r_condition: Option<crate::SEXP>,
     pub message: String,
     pub class: Vec<String>,
     pub data: Option<ConditionData>,
@@ -2134,6 +2152,7 @@ pub trait ErrPartsDebug {
 impl<E: std::fmt::Debug> ErrPartsDebug for &E {
     fn __mx_fallback_parts(&self, _prefix: &str) -> ErrParts {
         ErrParts {
+            r_condition: None,
             message: format!("{self:?}"),
             class: Vec::new(),
             data: None,
@@ -2182,6 +2201,7 @@ macro_rules! __mx_result_err_parts {
 #[track_caller]
 pub fn into_r_err_parts<E: RConditionData + ?Sized>(e: &E) -> ErrParts {
     ErrParts {
+        r_condition: e.__mx_r_condition(),
         message: e.message(),
         class: e.class(),
         data: check_err_fields(e.data(), e.__mx_keeps_internal_fields()),
@@ -2218,6 +2238,7 @@ impl<E: RConditionData> ConversionErrClassed for E {
     #[track_caller]
     fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
         ErrParts {
+            r_condition: None,
             message: self.message(),
             class: self.class(),
             data: check_err_fields(self.data(), self.__mx_keeps_internal_fields()),
@@ -2256,6 +2277,7 @@ pub trait ConversionErrBuiltin {
 /// [`ConversionErrBuiltin`].
 fn builtin_reason_parts(message: String) -> ErrParts {
     ErrParts {
+        r_condition: None,
         message,
         class: Vec::new(),
         data: None,
@@ -2331,6 +2353,7 @@ pub trait ConversionErrDisplay {
 impl<E: std::fmt::Display> ConversionErrDisplay for &E {
     fn __mx_conversion_parts(&self, _expected_known: bool) -> ErrParts {
         ErrParts {
+            r_condition: None,
             message: self.to_string(),
             class: Vec::new(),
             data: None,
@@ -2565,6 +2588,7 @@ pub fn conversion_err_parts(
     arg_message: Option<String>,
 ) -> ErrParts {
     let ErrParts {
+        r_condition: _,
         message,
         mut class,
         data,
@@ -2593,6 +2617,7 @@ pub fn conversion_err_parts(
         );
     }
     ErrParts {
+        r_condition: None,
         message,
         class,
         data: Some(fields),
@@ -2615,6 +2640,7 @@ pub fn conversion_err_parts(
 #[doc(hidden)]
 pub fn arg_check_parts(message: &str, param: &str, crate_class: &[&str]) -> ErrParts {
     ErrParts {
+        r_condition: None,
         message: message.to_string(),
         class: crate_class.iter().map(|c| (*c).to_string()).collect(),
         data: Some(vec![(CONVERSION_PARAM_FIELD.to_string(), param.into())]),
@@ -3161,6 +3187,7 @@ pub fn serde_err_parts<E: ?Sized + ::serde::Serialize + std::fmt::Display>(
     }
     check_distinct_field_names(&data, &renames);
     ErrParts {
+        r_condition: None,
         message,
         class,
         data: check_condition_data((!data.is_empty()).then_some(data)),

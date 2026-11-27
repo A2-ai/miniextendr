@@ -6419,3 +6419,35 @@ pub fn gc_stress_rarray_new() -> SEXP {
     };
     matrix.into_inner()
 }
+
+/// A caught R error raised as R's own object (`Err(REvalError)`) under GC
+/// pressure: the `Err` arm builds the tagged value, then copies R's condition
+/// without the `tryCatch()` frame's call (`Rf_shallow_duplicate` allocates)
+/// while it holds the tagged list. A `stop("gc")` at the top of the source
+/// gets that call. Returns the condition the tagged value carries: a
+/// `simpleError` with message `gc` and a `NULL` call.
+///
+/// No arguments — picked up by the fast `gctorture(TRUE)` no-arg sweep (#430).
+#[miniextendr(noexport)]
+pub fn gc_stress_reval_error_object() -> SEXP {
+    use miniextendr_api::condition::into_r_err_parts;
+    use miniextendr_api::error_value::result_err_condition_value;
+    use miniextendr_api::expression::r_eval_str_global;
+
+    // SAFETY: R's main thread, inside this call's boundary; `e` roots R's
+    // condition until the tagged value holds its copy.
+    unsafe {
+        let e = r_eval_str_global(r#"stop("gc")"#).expect_err("stop() raises");
+        let value = OwnedProtect::new(result_err_condition_value(into_r_err_parts(&e), None));
+        let cond = value.get().vector_elt(0);
+        assert!(
+            cond.inherits_class(c"simpleError"),
+            "the tagged value carries R's condition"
+        );
+        assert!(
+            cond != e.condition(),
+            "a copy without the tryCatch() frame's call"
+        );
+        cond
+    }
+}

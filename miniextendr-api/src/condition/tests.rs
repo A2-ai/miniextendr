@@ -1422,6 +1422,7 @@ fn conversion_err_parts_adds_prefix_param_and_rust_type() {
         Some("AsNumericVec"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "non-numeric value(s): \"BLQ\" (element 2)".into(),
             class: Vec::new(),
             data: None,
@@ -1444,6 +1445,7 @@ fn conversion_err_parts_adds_prefix_param_and_rust_type() {
         Some("Count"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "must be positive".into(),
             class: vec!["pkg_bad_arg".into(), "pkg_error".into()],
             data: Some(vec![("value".into(), RValue::from(-1))]),
@@ -1462,6 +1464,7 @@ fn conversion_err_parts_adds_prefix_param_and_rust_type() {
         None,
         &[],
         ErrParts {
+            r_condition: None,
             message: "got \"abc\"".into(),
             class: Vec::new(),
             data: None,
@@ -1485,6 +1488,7 @@ fn conversion_err_parts_keeps_the_call() {
         None,
         &[],
         ErrParts {
+            r_condition: None,
             message: "bad".into(),
             class: Vec::new(),
             data: None,
@@ -1508,6 +1512,7 @@ fn conversion_err_parts_appends_the_crate_class() {
         Some("i32"),
         &crate_class,
         ErrParts {
+            r_condition: None,
             message: "got character".into(),
             class: Vec::new(),
             data: None,
@@ -1523,6 +1528,7 @@ fn conversion_err_parts_appends_the_crate_class() {
         Some("Count"),
         &crate_class,
         ErrParts {
+            r_condition: None,
             message: "must be positive".into(),
             class: vec!["pkg_error_negative".into(), "pkg_error".into()],
             data: None,
@@ -1569,6 +1575,7 @@ fn conversion_err_parts_keeps_the_types_own_fields() {
         Some("Hyperparams"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "hyperparameter 'beta' must be non-negative".into(),
             class: Vec::new(),
             data: Some(vec![
@@ -1588,6 +1595,7 @@ fn conversion_err_parts_keeps_the_types_own_fields() {
         Some("Wrapped"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "bad".into(),
             class: Vec::new(),
             data: Some(vec![("rust_type".into(), RValue::from("Inner"))]),
@@ -1611,6 +1619,7 @@ fn conversion_err_parts_takes_a_whole_message() {
         Some("Mode"),
         &["pkg_error_argument"],
         ErrParts {
+            r_condition: None,
             message: "got \"zzz\"".into(),
             class: Vec::new(),
             data: None,

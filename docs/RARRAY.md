@@ -183,7 +183,8 @@ compute that one value without supplying a pointer to the entire payload.
 If the provider raises an error in a generated function, Rust owners unwind
 before the original condition reaches R. In standalone embedding, a failed
 `get()` panics in Rust and `copy_column_to_r()` returns a `SexpError::Condition`
-carrying the provider error's message and specific classes.
+carrying the provider error's message. R's classes and fields stay with R's
+condition object, which the `SexpError` does not hold yet (#1874).
 
 That bridge costs one small R allocation (a continuation token) per `get()`
 on an ALTREP array. To read many cells of an ALTREP matrix, copy whole
