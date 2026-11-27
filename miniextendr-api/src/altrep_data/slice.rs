@@ -485,10 +485,11 @@ impl<T: AltrepSlice> InferBase for T {
 pub unsafe fn set_slice_altrep_attributes<T: AltrepSlice>(x: SEXP) {
     use crate::SexpExt;
 
+    // Protected before the levels are read: the first read builds the levels
+    // vector, which allocates. Setting an attribute allocates its cell too.
+    // The levels and the class vector are preserved.
+    let x = unsafe { crate::OwnedProtect::new(x) };
     if let Some(levels) = <T::Element as AltrepElement>::altrep_levels() {
-        // Setting an attribute allocates its cell. The levels and the class
-        // vector are preserved.
-        let x = unsafe { crate::OwnedProtect::new(x) };
         x.get().set_levels(levels);
         x.get().set_class(crate::factor::factor_class_sexp());
     }
