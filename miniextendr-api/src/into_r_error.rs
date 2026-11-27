@@ -194,6 +194,7 @@ impl FailedElement {
     /// `list(index = , condition = <tagged value>)`.
     fn entry_rvalue(&self) -> RValue {
         let parts = ErrParts {
+            r_condition: None,
             message: self.message.clone(),
             class: self.class.clone(),
             data: self.data.clone(),

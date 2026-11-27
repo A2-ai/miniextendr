@@ -338,6 +338,13 @@ test_that("gc_stress_raw_tagged returns a tagged raw vector", {
   expect_match(attr(res, "mx_raw_type"), "GcStressRawWords<2>$")
 })
 
+test_that("gc_stress_reval_error_object returns R's condition without the frame call", {
+  cond <- miniextendr:::gc_stress_reval_error_object()
+  expect_s3_class(cond, c("simpleError", "error", "condition"), exact = TRUE)
+  expect_identical(conditionMessage(cond), "gc")
+  expect_null(conditionCall(cond))
+})
+
 test_that("vctrs, serde_json and raw-tagged fixtures stay intact under gctorture", {
   skip_gc_stress_if_disabled()
   ns <- getNamespace("miniextendr")

@@ -154,7 +154,7 @@ pub mod kind {
     /// caller's `kind` argument contained an interior NUL and could not be
     /// converted to a `CString`. Should not appear in normal flow; the match
     /// arm in [`crate::condition::RCondition::from_tagged_sexp`] handles it
-    /// defensively by degrading to `RCondition::Error`.
+    /// defensively by degrading to an error (`ConditionKind::Error`).
     pub const OTHER_RUST_ERROR: &str = "other_rust_error";
 }
 
@@ -204,7 +204,7 @@ pub unsafe fn make_rust_condition_value(
     }
 }
 
-/// Build the tagged value for an [`RCondition`](enum@RCondition) payload (`error!()`,
+/// Build the tagged value for an [`RCondition`](struct@RCondition) payload (`error!()`,
 /// `warning!()`, `message!()`, `condition!()`, a queued `defer_*` entry, or a
 /// payload reconstructed across a package boundary): its kind, message,
 /// classes and data, and `call` unless the payload says
@@ -234,14 +234,24 @@ pub(crate) unsafe fn condition_parts_value(
 ) -> SEXP {
     // SAFETY: forwarded from the caller.
     unsafe {
-        make_rust_condition_value_with_data(
+        let value = make_rust_condition_value_with_data(
             &parts.message,
             kind,
             &parts.class,
             call,
             parts.data,
             parts.call,
-        )
+        );
+        // R's own condition object goes in the message slot, where the R
+        // helper raises it as it is. Copying it without the `tryCatch()`
+        // frame's call allocates, so the value is protected meanwhile; the
+        // error that gave `cond` roots it.
+        if let Some(cond) = parts.r_condition {
+            let scope = crate::ProtectScope::new();
+            let value = scope.protect_raw(value);
+            value.set_vector_elt(0, crate::expression::without_try_catch_frame_call(cond));
+        }
+        value
     }
 }
 

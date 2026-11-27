@@ -1,4 +1,4 @@
-use super::{ConditionData, RCondition};
+use super::{ConditionData, ConditionKind, RCondition};
 use crate::RValue;
 
 /// The marker type of a crate that declares no `serde_error_shape!`, for
@@ -88,14 +88,15 @@ fn arg_error_payload() {
     use super::{CONVERSION_ERROR_CLASS_MARKER, ConditionCall};
     let choices = r#""fast", "slow""#;
     let check = |cond: RCondition, call_none: bool| {
-        let RCondition::Conversion {
+        let RCondition {
+            kind: ConditionKind::Conversion,
             message,
             class,
             data,
             call: got_call,
         } = cond
         else {
-            panic!("expected RCondition::Conversion, got {cond:?}");
+            panic!("expected a conversion RCondition, got {cond:?}");
         };
         assert_eq!(message, r#"'mode' should be one of "fast", "slow""#);
         assert_eq!(class, [CONVERSION_ERROR_CLASS_MARKER]);
@@ -160,7 +161,8 @@ fn error_class_vector_and_keyed_data() {
         )
     });
     match cond {
-        RCondition::Error {
+        RCondition {
+            kind: ConditionKind::Error,
             message,
             class,
             data,
@@ -185,7 +187,11 @@ fn error_class_vector_from_vec_string() {
     let classes = vec!["a".to_string(), "b".to_string()];
     let cond = catch(move || crate::warning!(class = classes, "w"));
     match cond {
-        RCondition::Warning { class, .. } => assert_eq!(class, vec!["a", "b"]),
+        RCondition {
+            kind: ConditionKind::Warning,
+            class,
+            ..
+        } => assert_eq!(class, vec!["a", "b"]),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -1416,6 +1422,7 @@ fn conversion_err_parts_adds_prefix_param_and_rust_type() {
         Some("AsNumericVec"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "non-numeric value(s): \"BLQ\" (element 2)".into(),
             class: Vec::new(),
             data: None,
@@ -1438,6 +1445,7 @@ fn conversion_err_parts_adds_prefix_param_and_rust_type() {
         Some("Count"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "must be positive".into(),
             class: vec!["pkg_bad_arg".into(), "pkg_error".into()],
             data: Some(vec![("value".into(), RValue::from(-1))]),
@@ -1456,6 +1464,7 @@ fn conversion_err_parts_adds_prefix_param_and_rust_type() {
         None,
         &[],
         ErrParts {
+            r_condition: None,
             message: "got \"abc\"".into(),
             class: Vec::new(),
             data: None,
@@ -1479,6 +1488,7 @@ fn conversion_err_parts_keeps_the_call() {
         None,
         &[],
         ErrParts {
+            r_condition: None,
             message: "bad".into(),
             class: Vec::new(),
             data: None,
@@ -1502,6 +1512,7 @@ fn conversion_err_parts_appends_the_crate_class() {
         Some("i32"),
         &crate_class,
         ErrParts {
+            r_condition: None,
             message: "got character".into(),
             class: Vec::new(),
             data: None,
@@ -1517,6 +1528,7 @@ fn conversion_err_parts_appends_the_crate_class() {
         Some("Count"),
         &crate_class,
         ErrParts {
+            r_condition: None,
             message: "must be positive".into(),
             class: vec!["pkg_error_negative".into(), "pkg_error".into()],
             data: None,
@@ -1563,6 +1575,7 @@ fn conversion_err_parts_keeps_the_types_own_fields() {
         Some("Hyperparams"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "hyperparameter 'beta' must be non-negative".into(),
             class: Vec::new(),
             data: Some(vec![
@@ -1582,6 +1595,7 @@ fn conversion_err_parts_keeps_the_types_own_fields() {
         Some("Wrapped"),
         &[],
         ErrParts {
+            r_condition: None,
             message: "bad".into(),
             class: Vec::new(),
             data: Some(vec![("rust_type".into(), RValue::from("Inner"))]),
@@ -1605,6 +1619,7 @@ fn conversion_err_parts_takes_a_whole_message() {
         Some("Mode"),
         &["pkg_error_argument"],
         ErrParts {
+            r_condition: None,
             message: "got \"zzz\"".into(),
             class: Vec::new(),
             data: None,
@@ -1787,7 +1802,8 @@ fn rerror_builder_and_from_error() {
 fn error_message_only_backcompat() {
     let cond = catch(|| crate::error!("plain {}", 42));
     match cond {
-        RCondition::Error {
+        RCondition {
+            kind: ConditionKind::Error,
             message,
             class,
             data,
@@ -1805,7 +1821,8 @@ fn error_message_only_backcompat() {
 fn error_class_only_backcompat() {
     let cond = catch(|| crate::error!(class = "my_error", "missing field: {}", "x"));
     match cond {
-        RCondition::Error {
+        RCondition {
+            kind: ConditionKind::Error,
             message,
             class,
             data,
@@ -1824,7 +1841,8 @@ fn error_single_data_pair() {
     let value = 41_i32;
     let cond = catch(move || crate::error!(data = ("value", value), "v = {value}"));
     match cond {
-        RCondition::Error {
+        RCondition {
+            kind: ConditionKind::Error,
             message,
             class,
             data,
@@ -1857,7 +1875,8 @@ fn error_class_and_data_list_all_value_types() {
         )
     });
     match cond {
-        RCondition::Error {
+        RCondition {
+            kind: ConditionKind::Error,
             message,
             class,
             data,
@@ -1887,7 +1906,8 @@ fn error_class_and_data_list_all_value_types() {
 fn warning_with_class_and_data() {
     let cond = catch(|| crate::warning!(class = "trunc", data = ("dropped", 3), "dropped"));
     match cond {
-        RCondition::Warning {
+        RCondition {
+            kind: ConditionKind::Warning,
             message,
             class,
             data,
@@ -1905,7 +1925,12 @@ fn warning_with_class_and_data() {
 fn message_with_data() {
     let cond = catch(|| crate::message!(data = ("step", 2), "step {}", 2));
     match cond {
-        RCondition::Message { message, data, .. } => {
+        RCondition {
+            kind: ConditionKind::Message,
+            message,
+            data,
+            ..
+        } => {
             assert_eq!(message, "step 2");
             assert_data(&data, &[("step", RValue::Integer(vec![Some(2)]))]);
         }
@@ -1918,7 +1943,8 @@ fn condition_with_class_and_data() {
     let cond =
         catch(|| crate::condition!(class = "progress", data = [("n", 10)], "processed {}", 10));
     match cond {
-        RCondition::Condition {
+        RCondition {
+            kind: ConditionKind::Condition,
             message,
             class,
             data,
@@ -1937,7 +1963,8 @@ fn call_none_on_every_condition_macro() {
     use super::ConditionCall;
 
     match catch(|| crate::error!(call = none, "plain {}", 1)) {
-        RCondition::Error {
+        RCondition {
+            kind: ConditionKind::Error,
             message,
             class,
             data,
@@ -1951,7 +1978,12 @@ fn call_none_on_every_condition_macro() {
         other => panic!("wrong variant: {other:?}"),
     }
     match catch(|| crate::rust_error!(call = none, class = ["member", "family"], "e")) {
-        RCondition::Error { class, call, .. } => {
+        RCondition {
+            kind: ConditionKind::Error,
+            class,
+            call,
+            ..
+        } => {
             assert_eq!(class, vec!["member", "family"]);
             assert!(matches!(call, ConditionCall::None));
         }
@@ -1965,7 +1997,8 @@ fn call_none_on_every_condition_macro() {
             "overrides an earlier row"
         )
     }) {
-        RCondition::Warning {
+        RCondition {
+            kind: ConditionKind::Warning,
             message,
             class,
             data,
@@ -1979,19 +2012,32 @@ fn call_none_on_every_condition_macro() {
         other => panic!("wrong variant: {other:?}"),
     }
     match catch(|| crate::condition!(call = none, data = ("n", 1), "tick")) {
-        RCondition::Condition { data, call, .. } => {
+        RCondition {
+            kind: ConditionKind::Condition,
+            data,
+            call,
+            ..
+        } => {
             assert_data(&data, &[("n", RValue::Integer(vec![Some(1)]))]);
             assert!(matches!(call, ConditionCall::None));
         }
         other => panic!("wrong variant: {other:?}"),
     }
     match catch(|| crate::rust_condition!(call = none, "tick")) {
-        RCondition::Condition { call, .. } => assert!(matches!(call, ConditionCall::None)),
+        RCondition {
+            kind: ConditionKind::Condition,
+            call,
+            ..
+        } => assert!(matches!(call, ConditionCall::None)),
         other => panic!("wrong variant: {other:?}"),
     }
     // Without `call = none` the call is inherited.
     match catch(|| crate::warning!("sibling")) {
-        RCondition::Warning { call, .. } => assert!(matches!(call, ConditionCall::Inherit)),
+        RCondition {
+            kind: ConditionKind::Warning,
+            call,
+            ..
+        } => assert!(matches!(call, ConditionCall::Inherit)),
         other => panic!("wrong variant: {other:?}"),
     }
 }
@@ -2021,7 +2067,11 @@ fn rerror_without_call_reaches_the_err_parts() {
 fn data_list_trailing_comma() {
     let cond = catch(|| crate::error!(data = [("a", 1), ("b", 2),], "msg"));
     match cond {
-        RCondition::Error { data, .. } => {
+        RCondition {
+            kind: ConditionKind::Error,
+            data,
+            ..
+        } => {
             assert_data(
                 &data,
                 &[
@@ -2040,7 +2090,11 @@ fn data_list_trailing_comma() {
 fn keyed_builder_arm_stringifies_idents() {
     let cond = catch(|| crate::error!(data = { value = 42, code = 7 }, "boom"));
     match cond {
-        RCondition::Error { data, .. } => {
+        RCondition {
+            kind: ConditionKind::Error,
+            data,
+            ..
+        } => {
             assert_data(
                 &data,
                 &[
@@ -2063,7 +2117,12 @@ fn keyed_builder_arm_trailing_comma_and_mixed_types() {
         )
     });
     match cond {
-        RCondition::Warning { data, class, .. } => {
+        RCondition {
+            kind: ConditionKind::Warning,
+            data,
+            class,
+            ..
+        } => {
             assert_eq!(class, vec!["trunc"]);
             assert_data(
                 &data,
@@ -2091,7 +2150,11 @@ fn option_scalar_fields_carry_na() {
         )
     });
     match cond {
-        RCondition::Error { data, .. } => {
+        RCondition {
+            kind: ConditionKind::Error,
+            data,
+            ..
+        } => {
             assert_data(
                 &data,
                 &[
@@ -2108,7 +2171,11 @@ fn option_scalar_fields_carry_na() {
 fn vec_option_field_carries_embedded_na() {
     let cond = catch(|| crate::error!(data = ("codes", vec![Some(1_i32), None, Some(3)]), "vec"));
     match cond {
-        RCondition::Error { data, .. } => {
+        RCondition {
+            kind: ConditionKind::Error,
+            data,
+            ..
+        } => {
             assert_data(
                 &data,
                 &[("codes", RValue::Integer(vec![Some(1), None, Some(3)]))],
@@ -2128,7 +2195,11 @@ fn wide_integer_ladder_via_macro() {
         )
     });
     match cond {
-        RCondition::Error { data, .. } => {
+        RCondition {
+            kind: ConditionKind::Error,
+            data,
+            ..
+        } => {
             assert_data(
                 &data,
                 &[
@@ -2145,7 +2216,11 @@ fn wide_integer_ladder_via_macro() {
 fn debug_fallback_via_macro() {
     let cond = catch(|| crate::error!(data = ("range", RValue::debug(0..=100)), "dbg"));
     match cond {
-        RCondition::Error { data, .. } => {
+        RCondition {
+            kind: ConditionKind::Error,
+            data,
+            ..
+        } => {
             assert_data(
                 &data,
                 &[("range", RValue::Character(vec![Some("0..=100".into())]))],

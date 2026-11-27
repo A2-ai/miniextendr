@@ -291,8 +291,7 @@ pub fn quoted_call_ns(pkg: &str, fun: &str, args: SEXP) -> SEXP {
 // region: an R error returned as Err, the caller's handlers kept (#1893)
 
 /// Call `f()` through `RCall::try_eval_with_handlers`: `list(value = <value>)`,
-/// or the caught `REvalError`'s parts,
-/// `list(message, classes, specific_classes, call, condition)`.
+/// or the caught `REvalError`'s parts, `list(message, classes, call, condition)`.
 #[miniextendr(noexport)]
 pub fn quoted_try_call(f: SEXP) -> SEXP {
     let _sentinel = DropSentinel;
@@ -304,15 +303,14 @@ pub fn quoted_try_call(f: SEXP) -> SEXP {
 }
 
 /// Call `f()` through `RCall::try_eval_with_handlers` and, when it raises an
-/// R error, raise the package's own `mx_reraised` error with R's message, the
-/// caught classes kept after it (`REvalError::reraise_class`).
+/// R error, raise the package's own `mx_reraised` error with R's message.
 #[miniextendr(noexport)]
-pub fn quoted_try_call_reraise(f: SEXP) -> SEXP {
+pub fn quoted_try_call_raise_own(f: SEXP) -> SEXP {
     let _sentinel = DropSentinel;
     // SAFETY: as `quoted_try_call`.
     match unsafe { RCall::from_sexp(f).try_eval_with_handlers(miniextendr_api::sys::R_BaseEnv) } {
         Ok(value) => value,
-        Err(e) => rust_error!(class = e.reraise_class("mx_reraised"), "{e}"),
+        Err(e) => rust_error!(class = "mx_reraised", "{e}"),
     }
 }
 

@@ -108,25 +108,25 @@ and what R reports about it:
 | `message()` | `conditionMessage(cond)`: no `Error in <call> :` prefix, no `Calls:` traceback line |
 | `call()` | `conditionCall(cond)` as `Option<SEXP>` |
 | `classes()` | the class vector, most specific first |
-| `specific_classes()` | the classes ahead of `rust_error` / `simpleError` / `error` / `condition` |
 | `inherits(class)` | whether `classes()` contains `class` |
 | `condition()` | the condition object |
-| `reraise_class(own)` | `own`, then the specific classes: the `class =` for raising it again |
 | `reraise()` (`unsafe`) | raise the condition again as R raised it, with `call()` as its call; inside a miniextendr boundary |
 
 `Display` writes the message alone, and `REvalError` is a `std::error::Error`.
+Returned as a `#[miniextendr]` function's `Err`, it raises R's condition object
+as it is.
 
 ```rust
 match RCall::new("print").arg(df).named_arg("na.print", one).eval_base() {
     Ok(_) => {}
     // e.message() is "invalid 'na.print' specification", not
     // "Error in print.default(...) : invalid 'na.print' specification\nCalls: ..."
-    Err(e) => rust_error!(class = e.reraise_class("pkg_print_error"), "{e}"),
+    Err(e) => rust_error!(class = "pkg_print_error", "{e}"),
 }
 ```
 
-[CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error-as-your-own) covers
-raising the caught error again as the package's own condition.
+[CONDITIONS.md](CONDITIONS.md#raising-a-caught-r-error) covers raising the
+caught error again, as it is or as the package's own condition.
 
 The call runs in a new top-level context (`R_ToplevelExec`, as under
 `R_tryEval`) under an exiting handler for `error` conditions
@@ -400,8 +400,8 @@ unsafe {
 `try_eval_with_handlers(expr, env)` and `RCall::try_eval_with_handlers(env)`
 do the same, except that an R error is caught at the evaluation and comes back
 as `Err(REvalError)`, as from `RCall::eval`: the caller's handlers see
-warnings and messages, and the Rust code decides what to raise for an error
-(`e.reraise_class(...)`). Other exits (`tryCatch(warning = )`, restarts) still
+warnings and messages, and the Rust code decides what to raise for an error:
+R's condition (returned as the `Err`) or its own. Other exits (`tryCatch(warning = )`, restarts) still
 leave through the Rust frames.
 
 ```rust
@@ -412,7 +412,7 @@ let out = unsafe {
         .named_arg("drop", drop)
         .try_eval_with_handlers(R_BaseEnv)
 }
-.unwrap_or_else(|e| rust_error!(class = e.reraise_class("pkg_subset_error"), "{e}"));
+.unwrap_or_else(|e| rust_error!(class = "pkg_subset_error", "{e}"));
 ```
 
 Both must run inside a miniextendr boundary on the main thread, and the unwind

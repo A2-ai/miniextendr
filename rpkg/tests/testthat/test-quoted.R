@@ -572,7 +572,6 @@ test_that("try_eval_with_handlers: an R error comes back as Err, with its classe
   res <- miniextendr:::quoted_try_call(function() check_input(1L))
   expect_identical(res$message, "bad input")
   expect_identical(res$classes, c("my_input_error", "error", "condition"))
-  expect_identical(res$specific_classes, "my_input_error")
   expect_identical(res$call, quote(check_input(1L)))
   expect_s3_class(res$condition, c("my_input_error", "error", "condition"), exact = TRUE)
   expect_identical(drops() - before, 1L)
@@ -589,9 +588,9 @@ test_that("try_eval_with_handlers: an R error comes back as Err, with its classe
   expect_identical(seen, 0L)
 })
 
-test_that("try_eval_with_handlers: re-raised with reraise_class, the warning still seen", {
+test_that("try_eval_with_handlers: raised as the package's own error, the warning still seen", {
   # A method forwarding to base R: the warning reaches the caller's handler,
-  # the error is raised again under the package's class.
+  # the error is raised again as the package's, with R's message.
   f <- function() {
     warning("'drop' argument will be ignored")
     stop(errorCondition("undefined columns selected", class = "vctrs_error_x"))
@@ -599,7 +598,7 @@ test_that("try_eval_with_handlers: re-raised with reraise_class, the warning sti
   seen <- 0L
   e <- tryCatch(
     withCallingHandlers(
-      miniextendr:::quoted_try_call_reraise(f),
+      miniextendr:::quoted_try_call_raise_own(f),
       warning = function(w) {
         seen <<- seen + 1L
         invokeRestart("muffleWarning")
@@ -609,26 +608,23 @@ test_that("try_eval_with_handlers: re-raised with reraise_class, the warning sti
   )
   expect_identical(seen, 1L)
   expect_identical(conditionMessage(e), "undefined columns selected")
-  expect_identical(
-    class(e),
-    c("mx_reraised", "vctrs_error_x", "rust_error", "simpleError", "error", "condition")
-  )
-  expect_identical(miniextendr:::quoted_try_call_reraise(function() 42L), 42L)
+  expect_identical(class(e), c("mx_reraised", "rust_error", "simpleError", "error", "condition"))
+  expect_identical(miniextendr:::quoted_try_call_raise_own(function() 42L), 42L)
 
   # The same through base R's `[.data.frame`.
   df <- data.frame(a = 1:2, b = 3:4)
   expect_no_warning(
-    out <- suppressWarnings(miniextendr:::quoted_try_call_reraise(function() df[1, drop = FALSE]))
+    out <- suppressWarnings(miniextendr:::quoted_try_call_raise_own(function() df[1, drop = FALSE]))
   )
   expect_identical(out, df[1])
   expect_identical(
     tryCatch(
-      miniextendr:::quoted_try_call_reraise(function() df[1, drop = FALSE]),
+      miniextendr:::quoted_try_call_raise_own(function() df[1, drop = FALSE]),
       warning = function(w) "caught"
     ),
     "caught"
   )
-  e <- tryCatch(miniextendr:::quoted_try_call_reraise(function() df[, "zz"]), error = identity)
+  e <- tryCatch(miniextendr:::quoted_try_call_raise_own(function() df[, "zz"]), error = identity)
   expect_s3_class(e, "mx_reraised")
   expect_identical(conditionMessage(e), "undefined columns selected")
 })
@@ -954,7 +950,7 @@ test_that("try_eval_with_handlers survives gctorture", {
       miniextendr:::quoted_try_call(muffled),
       warning = function(w) invokeRestart("muffleWarning")
     )
-    r <- tryCatch(miniextendr:::quoted_try_call_reraise(function() stop("gc")), error = identity)
+    r <- tryCatch(miniextendr:::quoted_try_call_raise_own(function() stop("gc")), error = identity)
     top <- miniextendr:::quoted_try_eval(stop("top"))
     again <- tryCatch(
       miniextendr:::quoted_try_call_reraise_as_is(function() stop(errorCondition("gc", class = "mx_gc"))),

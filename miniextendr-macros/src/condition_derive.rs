@@ -511,8 +511,8 @@ pub fn derive_r_condition(input: DeriveInput) -> syn::Result<TokenStream> {
     derive_condition(&input, name, container)
 }
 
-/// The `RCondition` variant for a declared kind; no kind is an error.
-fn condition_expr(kind: Option<&syn::Ident>) -> TokenStream {
+/// The `ConditionKind` for a declared kind; no kind is an error.
+fn condition_kind(kind: Option<&syn::Ident>) -> TokenStream {
     let variant = match kind.map(ToString::to_string).as_deref() {
         Some("error") | None => quote! { Error },
         Some("warning") => quote! { Warning },
@@ -520,7 +520,7 @@ fn condition_expr(kind: Option<&syn::Ident>) -> TokenStream {
         Some("condition") => quote! { Condition },
         _ => unreachable!("kind was validated while parsing"),
     };
-    quote! { Self::#variant { message, class, data, call } }
+    quote! { ::miniextendr_api::condition::ConditionKind::#variant }
 }
 
 fn derive_condition(
@@ -530,7 +530,7 @@ fn derive_condition(
 ) -> syn::Result<TokenStream> {
     let default_family = || to_snake_case(&ident_name(name));
 
-    let condition_body;
+    let kind_body;
     let display = quote! { ::std::string::ToString::to_string(self) };
     let call_none = quote! { ::miniextendr_api::condition::ConditionCall::None };
     // A given call, with the fields bound by `pattern`.
@@ -551,7 +551,7 @@ fn derive_condition(
                 container.data.iter().collect(),
                 &format!("`{name}`"),
             )?;
-            condition_body = condition_expr(container.kind.as_ref());
+            kind_body = condition_kind(container.kind.as_ref());
             let self_path = quote! { Self };
             let message = match &container.message {
                 Some(fmt) => {
@@ -629,7 +629,7 @@ fn derive_condition(
                 None => default_family(),
             };
             let variant_count = data.variants.len();
-            let mut condition_arms = Vec::new();
+            let mut kind_arms = Vec::new();
             let mut message_arms = Vec::new();
             let mut class_arms = Vec::new();
             let mut data_arms = Vec::new();
@@ -654,8 +654,8 @@ fn derive_condition(
                     &format!("variant `{name}::{variant_ident}`"),
                 )?;
                 let pattern = shape.pattern_wild(&quote! { #name::#variant_ident });
-                let expr = condition_expr(attrs.kind.as_ref().or(container.kind.as_ref()));
-                condition_arms.push(quote! { #pattern => #expr, });
+                let kind = condition_kind(attrs.kind.as_ref().or(container.kind.as_ref()));
+                kind_arms.push(quote! { #pattern => #kind, });
                 let path = quote! { Self::#variant_ident };
                 match &attrs.message {
                     Some(fmt) => {
@@ -700,7 +700,7 @@ fn derive_condition(
                     None => {}
                 }
             }
-            condition_body = quote! { match value { #(#condition_arms)* } };
+            kind_body = quote! { match &value { #(#kind_arms)* } };
             let message = if message_arms.is_empty() {
                 display
             } else if needs_display {
@@ -768,11 +768,13 @@ fn derive_condition(
             for ::miniextendr_api::condition::RCondition #where_clause
         {
             fn from(value: #name #ty_generics) -> Self {
-                let message = ::miniextendr_api::condition::RConditionData::message(&value);
-                let class = ::miniextendr_api::condition::RConditionData::class(&value);
-                let data = ::miniextendr_api::condition::RConditionData::data(&value);
-                let call = ::miniextendr_api::condition::RConditionData::call(&value);
-                #condition_body
+                Self {
+                    kind: #kind_body,
+                    message: ::miniextendr_api::condition::RConditionData::message(&value),
+                    class: ::miniextendr_api::condition::RConditionData::class(&value),
+                    data: ::miniextendr_api::condition::RConditionData::data(&value),
+                    call: ::miniextendr_api::condition::RConditionData::call(&value),
+                }
             }
         }
 

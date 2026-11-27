@@ -133,7 +133,6 @@ fn test_eval_error_is_err() {
         "Display is the message alone"
     );
     assert_eq!(err.classes(), ["simpleError", "error", "condition"]);
-    assert!(err.specific_classes().is_empty());
     assert!(
         err.call().is_none(),
         "a top-level stop() has no call of its own"
@@ -155,7 +154,7 @@ fn r_eval_error_suite() {
     r_test_utils::with_r_thread(|| {
         test_classed_condition_from_function();
         test_nested_error_has_no_traceback();
-        test_reraise_class();
+        test_err_parts_carry_the_r_condition();
         test_missing_package_condition();
         test_error_survives_gc();
     });
@@ -267,7 +266,6 @@ fn test_classed_condition_from_function() {
     .expect_err("check_input() raises");
     assert_eq!(err.message(), "bad input");
     assert_eq!(err.classes(), ["my_input_error", "error", "condition"]);
-    assert_eq!(err.specific_classes(), ["my_input_error"]);
     assert!(err.inherits("my_input_error"));
     assert!(!err.inherits("simpleError"));
 
@@ -298,45 +296,27 @@ fn test_nested_error_has_no_traceback() {
     assert_eq!(head(call), SEXP::symbol("g"));
 }
 
-/// `reraise_class` puts the package's classes first, then the caught specific
-/// classes, without the base layers and without duplicates.
-fn test_reraise_class() {
+/// Returned as an `Err`, a caught error is raised as R's own condition
+/// object: its parts carry it, with no classes of their own. A failure Rust
+/// built (a parse failure) carries none and is raised from its message.
+fn test_err_parts_carry_the_r_condition() {
     let err = r_str!(r#"stop(errorCondition("x", class = c("vctrs_error_x", "rlang_error")))"#)
         .expect_err("raises");
-    assert_eq!(err.specific_classes(), ["vctrs_error_x", "rlang_error"]);
-    assert_eq!(
-        err.reraise_class(["pkg_print_error", "pkg_error"]),
-        [
-            "pkg_print_error",
-            "pkg_error",
-            "vctrs_error_x",
-            "rlang_error"
-        ]
-    );
-    assert_eq!(
-        err.reraise_class("rlang_error"),
-        ["rlang_error", "vctrs_error_x"]
-    );
+    let parts = miniextendr_api::condition::into_r_err_parts(&err);
+    assert_eq!(parts.r_condition, Some(err.condition()));
+    assert_eq!(parts.message, "x");
+    assert!(parts.class.is_empty());
 
     // Converted to `RError` (Send, takes data fields): R's message, the
     // classes given.
-    let class = err.reraise_class("pkg_error");
-    let carried = RError::from(err).class(class);
+    let carried = RError::from(err).class("pkg_error");
     assert_eq!(carried.message_str(), "x");
-    assert_eq!(
-        carried.classes(),
-        ["pkg_error", "vctrs_error_x", "rlang_error"]
-    );
+    assert_eq!(carried.classes(), ["pkg_error"]);
 
-    // A condition raised by a miniextendr function carries `rust_error` and
-    // R's layers after its own classes; neither is specific.
-    let err = r_str!(
-        r#"stop(structure(class = c("pkg_bad", "rust_error", "simpleError", "error", "condition"),
-                          list(message = "bad", call = NULL)))"#
-    )
-    .expect_err("raises");
-    assert_eq!(err.specific_classes(), ["pkg_bad"]);
-    assert!(err.call().is_none());
+    let err = unsafe { r_eval_str("1 +)", R_GlobalEnv) }.expect_err("a parse failure is an Err");
+    let parts = miniextendr_api::condition::into_r_err_parts(&err);
+    assert!(parts.r_condition.is_none());
+    assert_eq!(parts.message, err.message());
 }
 
 /// `REnv::package_namespace` for a package that is not installed returns R's

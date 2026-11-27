@@ -10,7 +10,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::condition::{RCondition, RError};
+use miniextendr_api::condition::{ConditionKind, RCondition, RError};
 use miniextendr_api::expression::{RCall, REnv, r_eval_str_global};
 use miniextendr_api::externalptr::ExternalPtr;
 use miniextendr_api::from_r::{SexpError, TryFromSexp};
@@ -136,7 +136,11 @@ fn nargs_is_filled_by_the_r_wrapper() {
         let negative = OwnedProtect::new((-1_i32).into_sexp());
         let value = OwnedProtect::new(call1("_marker_arg_count", negative.get()));
         match RCondition::from_tagged_sexp(value.get()) {
-            Some(RCondition::Conversion { data, .. }) => {
+            Some(RCondition {
+                kind: ConditionKind::Conversion,
+                data,
+                ..
+            }) => {
                 let data = data.expect("the parameter as a field");
                 assert!(data.iter().any(|(name, _)| name == "param"), "{data:?}");
             }

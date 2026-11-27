@@ -139,7 +139,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, sync_channel};
 
 use crate::SEXP;
-use crate::condition::{RCondition, RConditionData};
+use crate::condition::{ConditionKind, RCondition, RConditionData};
 
 // region: Queue
 
@@ -201,7 +201,8 @@ pub(crate) fn open_channel() {
 /// From another thread it goes to R's main thread over a channel; see
 /// [Threads and boundaries](self#threads-and-boundaries).
 pub fn defer_warning(payload: impl RConditionData) {
-    defer(RCondition::Warning {
+    defer(RCondition {
+        kind: ConditionKind::Warning,
         message: payload.message(),
         class: payload.class(),
         data: payload.data(),
@@ -218,7 +219,8 @@ pub fn defer_warning(payload: impl RConditionData) {
 /// From another thread it goes to R's main thread over a channel; see
 /// [Threads and boundaries](self#threads-and-boundaries).
 pub fn defer_message(payload: impl RConditionData) {
-    defer(RCondition::Message {
+    defer(RCondition {
+        kind: ConditionKind::Message,
         message: payload.message(),
         class: payload.class(),
         data: payload.data(),
@@ -232,7 +234,8 @@ pub fn defer_message(payload: impl RConditionData) {
 /// From another thread it goes to R's main thread over a channel; see
 /// [Threads and boundaries](self#threads-and-boundaries).
 pub fn defer_condition(payload: impl RConditionData) {
-    defer(RCondition::Condition {
+    defer(RCondition {
+        kind: ConditionKind::Condition,
         message: payload.message(),
         class: payload.class(),
         data: payload.data(),
@@ -245,7 +248,7 @@ pub fn defer_condition(payload: impl RConditionData) {
 ///
 /// For code that queues diagnostics a caller already has: replaying the
 /// steps that built a saved object repeats warnings the object recorded.
-/// `capture(f).0` discards them; each [`RCondition`](enum@RCondition) can also be inspected,
+/// `capture(f).0` discards them; each [`RCondition`](struct@RCondition) can also be inspected,
 /// queued again with [`RCondition::defer`] or raised with
 /// [`RCondition::raise`].
 ///
@@ -325,14 +328,13 @@ fn receive() {
             // After the conditions kept: a full channel drops the newest.
             let dropped = DROPPED.swap(0, Ordering::Relaxed);
             if dropped > 0 {
-                queue.push(RCondition::Warning {
+                queue.push(RCondition {
+                    kind: ConditionKind::Warning,
                     message: format!(
                         "{dropped} deferred conditions from other threads dropped due to \
                          queue overflow"
                     ),
-                    class: Vec::new(),
-                    data: None,
-                    call: crate::condition::ConditionCall::Inherit,
+                    ..Default::default()
                 });
             }
         });
@@ -543,7 +545,8 @@ macro_rules! defer_warning {
     ($($t:tt)*) => {{
         let (__mx_call, __mx_class, __mx_data, __mx_message) =
             $crate::__mx_condition_parts!($($t)*);
-        $crate::deferred_condition::defer($crate::condition::RCondition::Warning {
+        $crate::deferred_condition::defer($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Warning,
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
@@ -569,7 +572,8 @@ macro_rules! defer_message {
     ($($t:tt)*) => {{
         let (__mx_call, __mx_class, __mx_data, __mx_message) =
             $crate::__mx_condition_parts!($($t)*);
-        $crate::deferred_condition::defer($crate::condition::RCondition::Message {
+        $crate::deferred_condition::defer($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Message,
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,
@@ -592,7 +596,8 @@ macro_rules! defer_condition {
     ($($t:tt)*) => {{
         let (__mx_call, __mx_class, __mx_data, __mx_message) =
             $crate::__mx_condition_parts!($($t)*);
-        $crate::deferred_condition::defer($crate::condition::RCondition::Condition {
+        $crate::deferred_condition::defer($crate::condition::RCondition {
+            kind: $crate::condition::ConditionKind::Condition,
             message: __mx_message,
             class: __mx_class,
             data: __mx_data,

@@ -25,7 +25,7 @@ use super::{
     NO_HANDLE_CLASS, PROT_TYPE_ID_INDEX, PROT_VEC_LEN, TypedExternal, receiver_class,
     refuse_restored, unwrap_class_handle,
 };
-use crate::condition::{ConditionCall, RCondition};
+use crate::condition::{ConditionKind, RCondition};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 use crate::sys::{R_ExternalPtrAddr, R_ExternalPtrProtected};
@@ -588,7 +588,8 @@ pub(crate) fn has_slot_names(prot: SEXP) -> bool {
 /// Raises the classed error for a read of `Sidecar` field `name` that a save
 /// of an `O` has no slot for.
 fn missing_slot<O: TypedExternal>(name: &str) -> ! {
-    RCondition::Error {
+    RCondition {
+        kind: ConditionKind::Error,
         message: format!(
             "the saved `{}` has no `{name}` field: the version that saved it did not have it",
             O::TYPE_NAME
@@ -598,7 +599,7 @@ fn missing_slot<O: TypedExternal>(name: &str) -> ! {
             "field".to_owned(),
             crate::RValue::Character(vec![Some(name.to_owned())]),
         )]),
-        call: ConditionCall::Inherit,
+        ..Default::default()
     }
     .raise()
 }
@@ -704,11 +705,11 @@ fn refuse_no_handle<T: TypedExternal>(receiver: SEXP) -> ! {
             Some(message) => message.to_owned(),
             None => refusal_message::<T>(receiver, Refused::NoPointer),
         };
-    std::panic::panic_any(RCondition::Error {
+    std::panic::panic_any(RCondition {
+        kind: ConditionKind::Error,
         message,
         class: no_handle_classes(restored, T::FIELD_ERROR_CLASS),
-        data: None,
-        call: ConditionCall::Inherit,
+        ..Default::default()
     })
 }
 
@@ -754,14 +755,14 @@ fn refuse_other_type<T: TypedExternal>(receiver: SEXP, refused: Refused) -> ! {
     if T::FIELD_ERROR_CLASS.is_empty() {
         panic!("{message}");
     }
-    std::panic::panic_any(RCondition::Error {
+    std::panic::panic_any(RCondition {
+        kind: ConditionKind::Error,
         message,
         class: T::FIELD_ERROR_CLASS
             .iter()
             .map(|c| (*c).to_owned())
             .collect(),
-        data: None,
-        call: ConditionCall::Inherit,
+        ..Default::default()
     })
 }
 

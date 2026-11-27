@@ -26,7 +26,6 @@
 //! }
 //! ```
 
-use crate::condition::ConditionClass;
 use crate::from_r::TryFromSexp;
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
@@ -788,7 +787,7 @@ impl RCall {
     ///     Ok(_) => {}
     ///     // `e` is R's condition: "invalid 'na.print' specification",
     ///     // without the "Error in print.default(...) :" prefix.
-    ///     Err(e) => rust_error!(class = e.reraise_class("pkg_print_error"), "{e}"),
+    ///     Err(e) => rust_error!(class = "pkg_print_error", "{e}"),
     /// }
     /// ```
     ///
@@ -920,7 +919,7 @@ impl RCall {
     ///         .named_arg("drop", drop)
     ///         .try_eval_with_handlers(R_BaseEnv)
     /// }
-    /// .unwrap_or_else(|e| rust_error!(class = e.reraise_class("pkg_subset_error"), "{e}"));
+    /// .unwrap_or_else(|e| rust_error!(class = "pkg_subset_error", "{e}"));
     /// ```
     ///
     /// `x[1, drop = FALSE]` warns that `drop` is ignored; the user's
@@ -1091,7 +1090,7 @@ unsafe fn quote(value: SEXP) -> SEXP {
 /// a package whose conditions are part of its interface. Keep [`RCall::eval`]
 /// for internal calls whose failure the Rust code handles itself, for
 /// instance by raising its own condition with the caught message
-/// ([`REvalError::reraise_class`]). [`try_eval_with_handlers`] combines the
+/// ([`REvalError`] has examples). [`try_eval_with_handlers`] combines the
 /// two: the caller's handlers see warnings and messages, and an R error comes
 /// back as `Err` for the Rust code to raise.
 ///
@@ -1131,7 +1130,8 @@ pub unsafe fn eval_with_handlers(expr: SEXP, env: SEXP) -> SEXP {
 /// handler (`R_tryCatchError`), and comes back as `Err(`[`REvalError`]`)`
 /// built as [`RCall::eval`] builds it: R's condition, with its message (no
 /// `Error in` prefix, no `Calls:` line), call and classes. The Rust code
-/// decides what to raise ([`REvalError::reraise_class`]).
+/// decides what to raise: its own condition, or R's
+/// ([`REvalError`] has examples).
 ///
 /// Any other exit (an exiting handler of the caller's `tryCatch()`, such as
 /// `tryCatch(warning = )`, `invokeRestart()`, an interrupt) leaves as under
@@ -1282,11 +1282,6 @@ pub unsafe fn r_eval_str_global(code: &str) -> Result<SEXP, REvalError> {
 
 // region: REvalError (an R error caught by RCall::eval / r_eval_str)
 
-/// The trailing classes [`REvalError::specific_classes`] leaves out: R's base
-/// error layers, and the `rust_error` layer a miniextendr function adds.
-/// `error!` and a `Result` return add them again.
-const BASE_ERROR_CLASSES: [&str; 4] = ["rust_error", "simpleError", "error", "condition"];
-
 /// The message of the `simpleError` that stands for an evaluation that jumped
 /// to the top level without an error condition.
 const EXIT_MESSAGE: &str =
@@ -1312,31 +1307,45 @@ const EXIT_MESSAGE: &str =
 /// jumps to the top level without an error (an interrupt) come back as a
 /// `simpleError` built for them, with no call.
 ///
-/// # Raising your own condition with it
+/// # Raising it
 ///
-/// The condition macros take the message through `Display`, and
-/// [`reraise_class`](Self::reraise_class) puts the package's own classes
-/// ahead of the caught ones:
+/// Returned as a `#[miniextendr]` function's `Err` (a `Result<T, REvalError>`
+/// return, `?` in one), the condition R raised is raised again as it is: its
+/// classes, fields, message and call. A handler or a method for its classes
+/// sees the object R made, as if the function had not caught it. The
+/// warnings and messages the body queued are signalled first, as for any
+/// `Err`. A failure Rust built (a parse failure, a jump to the top level, a
+/// result [`RCall::eval_as`] can't read) raises its message as the function's
+/// own error, with the classes and call of any `Err` it returns.
+///
+/// ```ignore
+/// #[miniextendr]
+/// pub fn slice_fifth(x: SEXP) -> Result<SEXP, REvalError> {
+///     // vctrs' `vctrs_error_subscript_oob`, with its `i` and `size` fields
+///     // and its call:
+///     unsafe {
+///         RCall::namespaced("vctrs", "vec_slice")?
+///             .arg(x)
+///             .arg_value(5)
+///             .eval(R_BaseEnv)
+///     }
+/// }
+/// ```
+///
+/// [`reraise`](Self::reraise) raises it at once, from inside the body.
+///
+/// To raise the package's own condition instead, the condition macros take
+/// the message through `Display`:
 ///
 /// ```ignore
 /// use miniextendr_api::rust_error;
 ///
 /// match RCall::new("print").arg(x).named_arg("na.print", na).eval_base() {
 ///     Ok(_) => {}
-///     // The package's own class with R's message:
-///     //   class = "pkg_print_error"
-///     // or with the caught classes kept after it, so a handler for those
-///     // still matches:
-///     Err(e) => rust_error!(class = e.reraise_class("pkg_print_error"), "{e}"),
+///     Err(e) => rust_error!(class = "pkg_print_error", "{e}"),
 /// }
 /// ```
 ///
-/// [`reraise`](Self::reraise) raises the caught condition itself instead, as
-/// R raised it.
-///
-/// A `#[miniextendr]` function returning `Result<T, REvalError>` raises the
-/// caught message with the caught [specific classes](Self::specific_classes)
-/// (`REvalError` implements [`RConditionData`](crate::condition::RConditionData)).
 /// For a `Result<T, condition::RError>` return, `RError::from(e)` takes the
 /// message (it is a `std::error::Error`) and `.class(...)` adds the classes.
 ///
@@ -1357,6 +1366,10 @@ pub struct REvalError {
     /// `call` is `conditionCall(cond)` or `NULL` (see [`REvalError::call`]).
     /// Its handle makes the value `!Send + !Sync`, see the type docs.
     roots: crate::Preserved,
+    /// Whether R raised the condition (`false` for the `simpleError` built for
+    /// a failure that raised none): an `Err` arm raises R's object as it is
+    /// only then.
+    raised_by_r: bool,
 }
 
 impl REvalError {
@@ -1396,41 +1409,6 @@ impl REvalError {
         self.classes.iter().any(|c| c == class)
     }
 
-    /// The classes ahead of the base layers: the class vector without its
-    /// trailing `rust_error`, `simpleError`, `error` and `condition`, which the
-    /// condition macros add again. Empty for `stop("boom")`; `["my_class"]`
-    /// for `stop(errorCondition("boom", class = "my_class"))` or for a
-    /// miniextendr function's `error!(class = "my_class", "boom")`.
-    pub fn specific_classes(&self) -> &[String] {
-        let end = self
-            .classes
-            .iter()
-            .rposition(|c| !BASE_ERROR_CLASSES.contains(&c.as_str()))
-            .map_or(0, |last| last + 1);
-        &self.classes[..end]
-    }
-
-    /// The class vector for raising this error again as the package's own
-    /// condition: `own` first (one class or several, most specific first),
-    /// then the caught [specific classes](Self::specific_classes) not already
-    /// in `own`.
-    ///
-    /// ```ignore
-    /// // stop(errorCondition("boom", class = "vctrs_error")) caught as `e`:
-    /// rust_error!(class = e.reraise_class(["pkg_print_error", "pkg_error"]), "{e}");
-    /// // class: pkg_print_error, pkg_error, vctrs_error, rust_error,
-    /// //        simpleError, error, condition
-    /// ```
-    pub fn reraise_class(&self, own: impl ConditionClass) -> Vec<String> {
-        let mut classes = own.into_condition_class();
-        for class in self.specific_classes() {
-            if !classes.contains(class) {
-                classes.push(class.clone());
-            }
-        }
-        classes
-    }
-
     /// The condition object.
     ///
     /// The SEXP is rooted while this value lives; protect it to keep it longer.
@@ -1447,8 +1425,8 @@ impl REvalError {
     /// Use it for the errors a body doesn't explain itself, next to a
     /// package's own condition for the ones it does
     /// ([`Quoted::try_eval_in`](crate::Quoted::try_eval_in) has an example).
-    /// Unlike `rust_error!(class = e.reraise_class(..), "{e}")`, the condition
-    /// gets no `rust_error` class and keeps R's call, not the wrapper's.
+    /// Returning the error as the function's `Err` raises the same object
+    /// after the body has returned; this raises it at once.
     ///
     /// The condition is signalled by base `stop(cond)`, evaluated as
     /// [`eval_with_handlers`] evaluates: the caller's handlers see it, and the
@@ -1495,7 +1473,7 @@ impl REvalError {
             let classes = string_vector(cond.get_class());
             let message = condition_message(cond);
             let call = OwnedProtect::new(condition_call(cond));
-            Self::adopt(cond, call.get(), message, classes)
+            Self::adopt(cond, call.get(), message, classes, true)
         }
     }
 
@@ -1529,6 +1507,7 @@ impl REvalError {
                 SEXP::nil(),
                 message.to_owned(),
                 CLASSES.map(String::from).to_vec(),
+                false,
             )
         }
     }
@@ -1539,7 +1518,13 @@ impl REvalError {
     ///
     /// R's main thread; `cond` and `call` are rooted by the caller for the
     /// call.
-    unsafe fn adopt(cond: SEXP, call: SEXP, message: String, classes: Vec<String>) -> Self {
+    unsafe fn adopt(
+        cond: SEXP,
+        call: SEXP,
+        message: String,
+        classes: Vec<String>,
+        raised_by_r: bool,
+    ) -> Self {
         unsafe {
             let roots = crate::Preserved::new(SEXP::alloc_list(2));
             roots.set_vector_elt(0, cond);
@@ -1548,6 +1533,7 @@ impl REvalError {
                 message,
                 classes,
                 roots,
+                raised_by_r,
             }
         }
     }
@@ -1570,16 +1556,16 @@ impl std::fmt::Debug for REvalError {
 
 impl std::error::Error for REvalError {}
 
-/// Returned as a `#[miniextendr]` function's `Err`, the caught error is raised
-/// again with its message and its [specific classes](REvalError::specific_classes),
-/// ahead of the `rust_error` layers; the call is the function's own.
+/// Returned as a `#[miniextendr]` function's `Err`, the condition R raised is
+/// raised again as it is; a failure Rust built raises its message as the
+/// function's own error (see [`REvalError`], "Raising it").
 impl crate::condition::RConditionData for REvalError {
     fn message(&self) -> String {
         self.message.clone()
     }
 
-    fn class(&self) -> Vec<String> {
-        self.specific_classes().to_vec()
+    fn __mx_r_condition(&self) -> Option<SEXP> {
+        self.raised_by_r.then(|| self.condition())
     }
 }
 
@@ -1662,13 +1648,14 @@ fn is_try_catch_frame_call(call: SEXP) -> bool {
 
 /// `cond`, or a shallow copy of it whose `call` element is `NULL` when that
 /// element is the [`tryCatch()` frame's call](is_try_catch_frame_call): the
-/// condition [`REvalError::reraise`] signals, with the call
-/// [`REvalError::call`] reports.
+/// condition [`REvalError::reraise`] signals and an `Err(REvalError)` raises
+/// (`error_value::condition_parts_value`), with the call [`REvalError::call`]
+/// reports.
 ///
 /// # Safety
 ///
 /// R's main thread; `cond` rooted by the caller. The result is unprotected.
-unsafe fn without_try_catch_frame_call(cond: SEXP) -> SEXP {
+pub(crate) unsafe fn without_try_catch_frame_call(cond: SEXP) -> SEXP {
     unsafe {
         if cond.type_of() != crate::SEXPTYPE::VECSXP {
             return cond;

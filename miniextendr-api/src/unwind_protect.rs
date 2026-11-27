@@ -177,7 +177,7 @@ fn get_continuation_token() -> SEXP {
 /// Extract a message from a panic payload.
 ///
 /// Handles `&str`, `String`, `&String` and
-/// [`RCondition`](enum@crate::condition::RCondition) payloads (the condition's
+/// [`RCondition`](struct@crate::condition::RCondition) payloads (the condition's
 /// message) consistently. The borrowed variants are returned as
 /// `Cow::Borrowed`, so the common `panic!("literal")` case avoids the heap
 /// allocation that a `String` return would force. Unrecognised payload types
@@ -193,7 +193,7 @@ pub fn panic_payload_to_string(payload: &(dyn Any + Send)) -> Cow<'_, str> {
     } else if let Some(s) = payload.downcast_ref::<&String>() {
         Cow::Borrowed(s.as_str())
     } else if let Some(condition) = payload.downcast_ref::<crate::condition::RCondition>() {
-        Cow::Borrowed(condition.message())
+        Cow::Borrowed(&condition.message)
     } else {
         Cow::Borrowed("unknown panic")
     }
@@ -868,10 +868,10 @@ where
 /// is no R wrapper to inspect a tagged SEXP (Approach 3 from the issue-345
 /// plan):
 ///
-/// - `RCondition::Error` (`error!()`) — `kind = "error"`, its classes ahead of
+/// - `ConditionKind::Error` (`error!()`) — `kind = "error"`, its classes ahead of
 ///   the `rust_*` layering, its `data =` fields.
 ///
-/// - `RCondition::Conversion` (`arg_error!`) — `kind = "conversion"`, with the
+/// - `ConditionKind::Conversion` (`arg_error!`) — `kind = "conversion"`, with the
 ///   crate-class marker replaced in Rust by the classes `miniextendr_init!`
 ///   registered: no generated R is there to resolve it.
 ///
@@ -923,9 +923,9 @@ where
                     .downcast::<crate::condition::RCondition>()
                     .expect("checked is::<RCondition> above");
                 let error_kind = matches!(
-                    cond,
-                    crate::condition::RCondition::Error { .. }
-                        | crate::condition::RCondition::Conversion { .. }
+                    cond.kind,
+                    crate::condition::ConditionKind::Error
+                        | crate::condition::ConditionKind::Conversion
                 );
                 // The kind is the one the tagged path writes for this payload.
                 let (kind, mut parts) = cond.into_parts();
@@ -1009,7 +1009,7 @@ where
 /// shim functions that have no R wrapper of their own. The tagged SEXP is
 /// returned to the View method wrapper, which calls
 /// [`crate::condition::repanic_if_rust_error`] to re-panic with the
-/// reconstructed [`enum@crate::condition::RCondition`]. The outer
+/// reconstructed [`struct@crate::condition::RCondition`]. The outer
 /// `with_r_unwind_protect` in the consumer's C entry point then catches the
 /// re-panic and builds the final tagged SEXP for the consumer's R wrapper.
 ///
@@ -1093,7 +1093,7 @@ where
 /// which raises a proper R condition past the Rust boundary, with `rust_*`
 /// class layering.
 ///
-/// Recognises [`enum@crate::condition::RCondition`] payloads (from `error!()`,
+/// Recognises [`struct@crate::condition::RCondition`] payloads (from `error!()`,
 /// `warning!()`, `message!()`, `condition!()`) before falling through to the
 /// generic panic→string path.
 ///

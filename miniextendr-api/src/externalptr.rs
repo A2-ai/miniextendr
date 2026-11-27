@@ -196,7 +196,7 @@ use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::ptr::{self, NonNull};
 
 use crate::RValue;
-use crate::condition::{ConditionCall, RCondition};
+use crate::condition::{ConditionKind, RCondition};
 use crate::gc_protect::ProtectScope;
 use crate::protect_pool::{ProtectKey, ProtectPool};
 use crate::sys::{
@@ -522,11 +522,11 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP, receiver: SEX
     ) && let Some(cause) = unsafe { snapshot::decode_failure::<T>(sexp) }
     {
         std::panic::panic_any(
-            RCondition::Error {
-                message: decode_failed_message::<T>(&name(), cause.message()),
+            RCondition {
+                kind: ConditionKind::Error,
+                message: decode_failed_message::<T>(&name(), &cause.message),
                 class: restored_classes_of::<T>(RESTORED_NO_VALUE_CLASS),
-                data: None,
-                call: ConditionCall::Inherit,
+                ..Default::default()
             }
             .with_parent(cause),
         )
@@ -553,11 +553,12 @@ pub(crate) unsafe fn refuse_restored<T: TypedExternal>(sexp: SEXP, receiver: SEX
         ),
         NullAddress::Foreign | NullAddress::OtherType { .. } => return kind,
     };
-    std::panic::panic_any(RCondition::Error {
+    std::panic::panic_any(RCondition {
+        kind: ConditionKind::Error,
         message,
         class: restored_classes_of::<T>(class),
         data,
-        call: ConditionCall::Inherit,
+        ..Default::default()
     })
 }
 

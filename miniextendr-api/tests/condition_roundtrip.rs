@@ -15,7 +15,7 @@ enum NoShapes {}
 fn condition_data_roundtrip_scalars_and_vecs() {
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::RValue;
-        use miniextendr_api::condition::{ConditionData, RCondition};
+        use miniextendr_api::condition::{ConditionData, ConditionKind, RCondition};
         use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
         // Build a ConditionData with each supported scalar type.
@@ -51,7 +51,8 @@ fn condition_data_roundtrip_scalars_and_vecs() {
             .expect("from_tagged_sexp should return Some for a valid tagged SEXP");
 
         match cond {
-            RCondition::Error {
+            RCondition {
+                kind: ConditionKind::Error,
                 message,
                 class,
                 data,
@@ -99,7 +100,7 @@ fn condition_data_roundtrip_scalars_and_vecs() {
 #[test]
 fn condition_data_roundtrip_no_data() {
     r_test_utils::with_r_thread(|| unsafe {
-        use miniextendr_api::condition::RCondition;
+        use miniextendr_api::condition::{ConditionKind, RCondition};
         use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
         let sexp = make_rust_condition_value_with_data(
@@ -113,7 +114,8 @@ fn condition_data_roundtrip_no_data() {
 
         let cond = RCondition::from_tagged_sexp(sexp).expect("must parse");
         match cond {
-            RCondition::Error {
+            RCondition {
+                kind: ConditionKind::Error,
                 message,
                 class,
                 data,
@@ -135,7 +137,7 @@ fn condition_data_roundtrip_na_field_survives() {
     // pins the NA fidelity that folding in `RValue` delivers.
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::RValue;
-        use miniextendr_api::condition::{ConditionData, RCondition};
+        use miniextendr_api::condition::{ConditionData, ConditionKind, RCondition};
         use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
         // Build a ConditionData with one NA-bearing field alongside a valid one.
@@ -156,7 +158,11 @@ fn condition_data_roundtrip_na_field_survives() {
 
         let cond = RCondition::from_tagged_sexp(sexp).expect("must parse");
         match cond {
-            RCondition::Error { data, .. } => {
+            RCondition {
+                kind: ConditionKind::Error,
+                data,
+                ..
+            } => {
                 let data = data.expect("data must be Some");
                 assert_eq!(
                     data.len(),
@@ -177,7 +183,7 @@ fn condition_data_roundtrip_na_field_survives() {
 fn condition_data_roundtrip_warning_carries_data() {
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::RValue;
-        use miniextendr_api::condition::{ConditionData, RCondition};
+        use miniextendr_api::condition::{ConditionData, ConditionKind, RCondition};
         use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
         let fields: ConditionData = vec![
@@ -199,7 +205,8 @@ fn condition_data_roundtrip_warning_carries_data() {
 
         let cond = RCondition::from_tagged_sexp(sexp).expect("must parse");
         match cond {
-            RCondition::Warning {
+            RCondition {
+                kind: ConditionKind::Warning,
                 message,
                 class,
                 data,
@@ -224,7 +231,7 @@ fn condition_data_roundtrip_warning_carries_data() {
 #[test]
 fn condition_class_vector_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
-        use miniextendr_api::condition::RCondition;
+        use miniextendr_api::condition::{ConditionKind, RCondition};
         use miniextendr_api::error_value::make_rust_condition_value_with_data;
 
         let classes = vec![
@@ -240,7 +247,8 @@ fn condition_class_vector_roundtrip() {
             miniextendr_api::condition::ConditionCall::Inherit,
         );
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
-            RCondition::Error {
+            RCondition {
+                kind: ConditionKind::Error,
                 message,
                 class,
                 data,
@@ -261,7 +269,7 @@ fn condition_class_vector_roundtrip() {
 fn result_err_parts_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::RValue;
-        use miniextendr_api::condition::{RCondition, RError};
+        use miniextendr_api::condition::{ConditionKind, RCondition, RError};
         use miniextendr_api::error_value::result_err_condition_value;
 
         let err = RError::new("too large")
@@ -271,7 +279,8 @@ fn result_err_parts_roundtrip() {
         let parts = miniextendr_api::__mx_result_err_parts!(err, "pkg_error", NoShapes);
         let sexp = result_err_condition_value(parts, None);
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
-            RCondition::Error {
+            RCondition {
+                kind: ConditionKind::Error,
                 message,
                 class,
                 data,
@@ -312,7 +321,7 @@ fn result_err_parts_roundtrip() {
 fn conversion_parts_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::RValue;
-        use miniextendr_api::condition::{RCondition, RError};
+        use miniextendr_api::condition::{ConditionKind, RCondition, RError};
         use miniextendr_api::error_value::conversion_condition_value;
 
         let err = RError::new("must be positive")
@@ -329,7 +338,8 @@ fn conversion_parts_roundtrip() {
             None,
         );
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
-            RCondition::Conversion {
+            RCondition {
+                kind: ConditionKind::Conversion,
                 message,
                 class,
                 data,
@@ -362,7 +372,7 @@ fn conversion_parts_roundtrip() {
 #[test]
 fn no_call_marker_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
-        use miniextendr_api::condition::{ConditionCall, RCondition, RError};
+        use miniextendr_api::condition::{ConditionCall, ConditionKind, RCondition, RError};
         use miniextendr_api::error_value::{
             make_rust_condition_value_with_data, result_err_condition_value, rust_condition_value,
         };
@@ -381,7 +391,8 @@ fn no_call_marker_roundtrip() {
         assert_eq!(call_slot.len(), 1);
         assert_eq!(call_slot.logical_elt(0), 0);
         match RCondition::from_tagged_sexp(sexp).expect("tagged") {
-            RCondition::Warning {
+            RCondition {
+                kind: ConditionKind::Warning,
                 message,
                 class,
                 data,
@@ -401,37 +412,33 @@ fn no_call_marker_roundtrip() {
             miniextendr_api::sys::Rf_install(c"f".as_ptr()),
         ));
         let callless = rust_condition_value(
-            RCondition::Error {
+            RCondition {
+                kind: ConditionKind::Error,
                 message: "e".into(),
-                class: Vec::new(),
-                data: None,
                 call: ConditionCall::None,
+                ..Default::default()
             },
             Some(call.get()),
         );
         assert!(callless.vector_elt(3).is_logical());
         assert!(matches!(
-            RCondition::from_tagged_sexp(callless)
-                .expect("tagged")
-                .call(),
+            RCondition::from_tagged_sexp(callless).expect("tagged").call,
             ConditionCall::None
         ));
         let with_call = rust_condition_value(
-            RCondition::Error {
+            RCondition {
+                kind: ConditionKind::Error,
                 message: "e".into(),
-                class: Vec::new(),
-                data: None,
-                call: ConditionCall::Inherit,
+                ..Default::default()
             },
             Some(call.get()),
         );
         assert_eq!(with_call.vector_elt(3), call.get());
         let without_call = rust_condition_value(
-            RCondition::Error {
+            RCondition {
+                kind: ConditionKind::Error,
                 message: "e".into(),
-                class: Vec::new(),
-                data: None,
-                call: ConditionCall::Inherit,
+                ..Default::default()
             },
             None,
         );
@@ -439,7 +446,7 @@ fn no_call_marker_roundtrip() {
         assert!(matches!(
             RCondition::from_tagged_sexp(without_call)
                 .expect("tagged")
-                .call(),
+                .call,
             ConditionCall::Inherit
         ));
 
@@ -449,7 +456,7 @@ fn no_call_marker_roundtrip() {
         let sexp = result_err_condition_value(parts, Some(call.get()));
         assert!(sexp.vector_elt(3).is_logical());
         assert!(matches!(
-            RCondition::from_tagged_sexp(sexp).expect("tagged").call(),
+            RCondition::from_tagged_sexp(sexp).expect("tagged").call,
             ConditionCall::None
         ));
     });
@@ -462,7 +469,7 @@ fn no_call_marker_roundtrip() {
 #[test]
 fn given_call_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
-        use miniextendr_api::condition::{ConditionCall, RCondition, RError};
+        use miniextendr_api::condition::{ConditionCall, ConditionKind, RCondition, RError};
         use miniextendr_api::error_value::{result_err_condition_value, rust_condition_value};
         use miniextendr_api::expression::r_eval_str_global;
         use miniextendr_api::{IntoR, OwnedProtect, RCallPart, RCallValue, SexpExt, TryFromSexp};
@@ -486,11 +493,11 @@ fn given_call_roundtrip() {
             miniextendr_api::sys::Rf_install(c"f".as_ptr()),
         ));
         let sexp = OwnedProtect::new(rust_condition_value(
-            RCondition::Warning {
+            RCondition {
+                kind: ConditionKind::Warning,
                 message: "w".into(),
-                class: Vec::new(),
-                data: None,
                 call: ConditionCall::from(assign.clone()),
+                ..Default::default()
             },
             Some(captured.get()),
         ));
@@ -500,7 +507,8 @@ fn given_call_roundtrip() {
             "the given call replaces the captured one"
         );
         match RCondition::from_tagged_sexp(sexp.get()).expect("tagged") {
-            RCondition::Warning {
+            RCondition {
+                kind: ConditionKind::Warning,
                 call: ConditionCall::Given(call),
                 ..
             } => {
@@ -559,7 +567,7 @@ fn given_call_roundtrip() {
         assert!(matches!(
             RCondition::from_tagged_sexp(sexp.get())
                 .expect("tagged")
-                .call(),
+                .call,
             ConditionCall::Inherit
         ));
         assert!(RCallValue::try_from_sexp(closure_call.get()).is_err());
@@ -595,7 +603,7 @@ unsafe fn make_tagged_with_call_slot(call: miniextendr_api::SEXP) -> miniextendr
 fn arg_error_roundtrip() {
     r_test_utils::with_r_thread(|| unsafe {
         use miniextendr_api::condition::{
-            CONVERSION_ERROR_CLASS_MARKER, ConditionCall, RCondition,
+            CONVERSION_ERROR_CLASS_MARKER, ConditionCall, ConditionKind, RCondition,
         };
         use miniextendr_api::error_value::{kind, rust_condition_value};
         use miniextendr_api::{OwnedProtect, RValue, SexpExt};
@@ -615,7 +623,8 @@ fn arg_error_roundtrip() {
                 Some(CONVERSION_ERROR_CLASS_MARKER)
             );
             match RCondition::from_tagged_sexp(sexp).expect("tagged") {
-                RCondition::Conversion {
+                RCondition {
+                    kind: ConditionKind::Conversion,
                     message,
                     class,
                     data,

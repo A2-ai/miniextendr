@@ -362,7 +362,7 @@ test_that("trait conditions round-trip for consumer DoubleCounter", {
 #     → error!(class = "data_bearing_error", data = [("field_a", value), ...], "msg")
 #     → vtable shim returns tagged SEXP (slot [4] = named list)
 #     → repanic_if_rust_error calls from_tagged_sexp, which now reads slot [4]
-#     → RCondition::Error { data: Some([...]) } is re-panicked
+#     → RCondition { kind: Error, data: Some([...]), .. } is re-panicked
 #     → consumer's with_r_unwind_protect produces a new tagged SEXP with data
 #     → R wrapper raises the condition with e$field_a etc. accessible.
 
