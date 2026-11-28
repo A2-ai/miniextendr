@@ -3860,7 +3860,7 @@ pub fn gc_stress_reader_enum_flatten() {
     // frame is an R-rooted call argument; the fixture stands in for that root.
     let _df_guard = unsafe { miniextendr_api::OwnedProtect::new(df_sexp) };
     let frame = DataFrame::from_sexp(df_sexp).unwrap();
-    let back: Vec<RETracked> = <Vec<RETracked>>::from_dataframe(&frame).unwrap();
+    let back: Vec<RETracked> = <Vec<RETracked>>::from_dataframe(frame).unwrap();
     assert_eq!(back.len(), 4);
 }
 
@@ -3900,7 +3900,7 @@ pub fn gc_stress_reader_enum_factor() {
     // an R-rooted call argument; the fixture stands in for that root.
     let _df_guard = unsafe { miniextendr_api::OwnedProtect::new(df_sexp) };
     let frame = DataFrame::from_sexp(df_sexp).unwrap();
-    let back: Vec<REMove> = <Vec<REMove>>::from_dataframe(&frame).unwrap();
+    let back: Vec<REMove> = <Vec<REMove>>::from_dataframe(frame).unwrap();
     assert_eq!(back.len(), 5);
 }
 
@@ -3943,7 +3943,7 @@ pub fn gc_stress_reader_enum_map() {
     // stands in for that root.
     let _df_guard = unsafe { miniextendr_api::OwnedProtect::new(df_sexp) };
     let frame = DataFrame::from_sexp(df_sexp).unwrap();
-    let back: Vec<REMapB> = <Vec<REMapB>>::from_dataframe(&frame).unwrap();
+    let back: Vec<REMapB> = <Vec<REMapB>>::from_dataframe(frame).unwrap();
     assert_eq!(back.len(), 4);
 }
 
@@ -6283,7 +6283,7 @@ pub fn gc_stress_saved_value() {
         churn_pending_shapes();
         // Saved again before any access: the carrier writes what it read.
         let back = reload_value(back.get());
-        let mut attached = ExternalPtr::<SavedR6>::try_from_sexp(back.get()).expect("attached");
+        let attached = ExternalPtr::<SavedR6>::try_from_sexp(back.get()).expect("attached");
         churn_pending_shapes();
         assert_eq!(attached.borrow().n, n);
         assert_eq!(SavedR6::tags(&attached), vec![format!("tag{n}"); 4]);

@@ -92,7 +92,6 @@ pub fn df_shared_columns_read() -> SEXP {
 #[miniextendr(noexport)]
 pub fn df_shared_columns_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<SharedColumnReadRow> =
-        <Vec<SharedColumnReadRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<SharedColumnReadRow> = <Vec<SharedColumnReadRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }

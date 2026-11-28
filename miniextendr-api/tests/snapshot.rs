@@ -64,6 +64,10 @@ mod second {
 /// Values the general serde-to-R mapping can't read back (#2256): the save
 /// uses the exact encoding.
 #[derive(miniextendr_api::ExternalPtr, serde::Serialize, serde::Deserialize)]
+#[expect(
+    clippy::option_option,
+    reason = "checks that a snapshot keeps Some(None) apart from None"
+)]
 struct Shapes {
     values: Values,
     notice: Notice,
@@ -146,7 +150,7 @@ fn a_serde_value_comes_back() {
         assert_eq!(wrapped.borrow().n, 7);
         drop(wrapped);
         drop(again);
-        let mut restored = ExternalPtr::<Counter>::try_from_sexp(back.get()).expect("attached");
+        let restored = ExternalPtr::<Counter>::try_from_sexp(back.get()).expect("attached");
         assert_eq!(restored.borrow().n, 7);
         assert_eq!(restored.borrow().label, "seven");
         assert_eq!(Counter::tags(&restored), ["kept"]);
@@ -196,7 +200,7 @@ fn a_value_the_general_mapping_changes_comes_back_exactly() {
 fn a_save_while_a_call_holds_the_value_mutably_is_a_borrow_conflict() {
     r_test_utils::with_r_thread(|| {
         register();
-        let mut ptr = ExternalPtr::new(Counter {
+        let ptr = ExternalPtr::new(Counter {
             n: 1,
             label: "held".to_owned(),
             tags: Sidecar::new(Vec::new()),

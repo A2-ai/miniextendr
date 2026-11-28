@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn default_is_path_aware() {
-    let set = build_globset(&["*.R".to_string()], &GlobOptions::default()).unwrap();
+    let set = build_globset(&["*.R".to_string()], GlobOptions::default()).unwrap();
     let got = globset_is_match(
         &set,
         &[
@@ -20,7 +20,7 @@ fn non_literal_separator_crosses_slash() {
         literal_separator: false,
         ..GlobOptions::default()
     };
-    let set = build_globset(&["*.R".to_string()], &opts).unwrap();
+    let set = build_globset(&["*.R".to_string()], opts).unwrap();
     assert!(set.is_match("sub/a.R"));
 }
 
@@ -30,7 +30,7 @@ fn case_insensitive() {
         case_insensitive: true,
         ..GlobOptions::default()
     };
-    let set = build_globset(&["*.r".to_string()], &opts).unwrap();
+    let set = build_globset(&["*.r".to_string()], opts).unwrap();
     assert!(set.is_match("A.R"));
 }
 
@@ -38,7 +38,7 @@ fn case_insensitive() {
 fn multi_pattern_indices() {
     let set = build_globset(
         &["*.R".to_string(), "*.Rmd".to_string()],
-        &GlobOptions::default(),
+        GlobOptions::default(),
     )
     .unwrap();
     assert_eq!(globset_matches(&set, "a.Rmd"), vec![2]);
@@ -48,12 +48,12 @@ fn multi_pattern_indices() {
 
 #[test]
 fn invalid_glob_errors() {
-    assert!(build_globset(&["a[".to_string()], &GlobOptions::default()).is_err());
+    assert!(build_globset(&["a[".to_string()], GlobOptions::default()).is_err());
 }
 
 #[test]
 fn recursive_glob() {
-    let set = build_globset(&["**/*.rs".to_string()], &GlobOptions::default()).unwrap();
+    let set = build_globset(&["**/*.rs".to_string()], GlobOptions::default()).unwrap();
     assert!(set.is_match("src/lib.rs"));
     assert!(set.is_match("a/b/c.rs"));
 }

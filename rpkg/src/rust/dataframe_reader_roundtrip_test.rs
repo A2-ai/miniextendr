@@ -1,7 +1,7 @@
 //! Round-trip fixtures for the non-scalar `FromDataFrame` readers (#782, #809).
 //!
 //! `#[derive(DataFrameRow)]` now generates an R→Rust reader
-//! (`try_from_dataframe` / `_par`, surfaced as `Vec::<Row>::from_dataframe(&df)`)
+//! (`try_from_dataframe` / `_par`, surfaced as `Vec::<Row>::from_dataframe(df)`)
 //! for the struct-path shapes that previously had only a *writer*:
 //!
 //!   - column expansion: `[T; N]`, `Vec<T>` + `width`, `Vec<T>`/`Box<[T]>` + `expand`
@@ -227,13 +227,13 @@ pub struct RQualifiedRow {
 
 // region: round-trip entrypoints (read → rebuild)
 
-/// `Vec::<RFixedRow>::from_dataframe(&df)` → rebuild. Columns `id`, `coords_1..3`.
+/// `Vec::<RFixedRow>::from_dataframe(df)` → rebuild. Columns `id`, `coords_1..3`.
 /// @param df data.frame with `id` and `coords_1`/`coords_2`/`coords_3`.
 /// @export
 #[miniextendr]
 pub fn reader_fixed_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RFixedRow> = <Vec<RFixedRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RFixedRow> = <Vec<RFixedRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -243,7 +243,7 @@ pub fn reader_fixed_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_pinned_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RPinnedRow> = <Vec<RPinnedRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RPinnedRow> = <Vec<RPinnedRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -253,7 +253,7 @@ pub fn reader_pinned_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_box_pinned_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RBoxPinnedRow> = <Vec<RBoxPinnedRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RBoxPinnedRow> = <Vec<RBoxPinnedRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -263,7 +263,7 @@ pub fn reader_box_pinned_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_auto_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RAutoRow> = <Vec<RAutoRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RAutoRow> = <Vec<RAutoRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -273,7 +273,7 @@ pub fn reader_auto_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_auto_box_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RAutoBoxRow> = <Vec<RAutoBoxRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RAutoBoxRow> = <Vec<RAutoBoxRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -283,7 +283,7 @@ pub fn reader_auto_box_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_flatten_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<ROuter> = <Vec<ROuter>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<ROuter> = <Vec<ROuter>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -293,7 +293,7 @@ pub fn reader_flatten_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_flatten_mixed_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RTaggedOuter> = <Vec<RTaggedOuter>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RTaggedOuter> = <Vec<RTaggedOuter>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -303,7 +303,7 @@ pub fn reader_flatten_mixed_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_flatten_nested_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RNestOuter> = <Vec<RNestOuter>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RNestOuter> = <Vec<RNestOuter>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -313,7 +313,7 @@ pub fn reader_flatten_nested_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_qualified_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RQualifiedRow> = <Vec<RQualifiedRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RQualifiedRow> = <Vec<RQualifiedRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -321,34 +321,34 @@ pub fn reader_qualified_roundtrip(df: SEXP) -> SEXP {
 
 // region: opaque list-column round-trip entrypoints (#809)
 
-/// `Vec::<RListVecRow>::from_dataframe(&df)` → rebuild. Columns `id`, `data` (list-column).
+/// `Vec::<RListVecRow>::from_dataframe(df)` → rebuild. Columns `id`, `data` (list-column).
 /// @param df data.frame with `id` (integer) and `data` (list of numeric vectors).
 /// @export
 #[miniextendr]
 pub fn reader_list_vec_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// `Vec::<RListBoxRow>::from_dataframe(&df)` → rebuild. Columns `tag`, `xs` (list-column).
+/// `Vec::<RListBoxRow>::from_dataframe(df)` → rebuild. Columns `tag`, `xs` (list-column).
 /// Exercises `.into()` from `Vec<i32>` to `Box<[i32]>` per row.
 /// @param df data.frame with `tag` (character) and `xs` (list of integer vectors).
 /// @export
 #[miniextendr]
 pub fn reader_list_box_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RListBoxRow> = <Vec<RListBoxRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RListBoxRow> = <Vec<RListBoxRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// `Vec::<RListMultiRow>::from_dataframe(&df)` → rebuild. Columns `ids`, `names` (both list-columns).
+/// `Vec::<RListMultiRow>::from_dataframe(df)` → rebuild. Columns `ids`, `names` (both list-columns).
 /// @param df data.frame with `ids` (list of integer vectors) and `names` (list of character vectors).
 /// @export
 #[miniextendr]
 pub fn reader_list_multi_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RListMultiRow> = <Vec<RListMultiRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RListMultiRow> = <Vec<RListMultiRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -359,7 +359,7 @@ pub fn reader_list_multi_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_list_vec_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -367,18 +367,18 @@ pub fn reader_list_vec_roundtrip_par(df: SEXP) -> SEXP {
 
 // region: map-column round-trip entrypoints (#764)
 
-/// `Vec::<RMapRow>::from_dataframe(&df)` → rebuild. Columns `id`, `opts`
+/// `Vec::<RMapRow>::from_dataframe(df)` → rebuild. Columns `id`, `opts`
 /// (list of named lists). BTreeMap keys come back sorted.
 /// @param df data.frame with `id` (integer) and `opts` (list of named lists of integers).
 /// @export
 #[miniextendr]
 pub fn reader_map_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
-/// `Vec::<RHashMapRow>::from_dataframe(&df)` → rebuild. Columns `label`,
+/// `Vec::<RHashMapRow>::from_dataframe(df)` → rebuild. Columns `label`,
 /// `weights` (list of named lists). HashMap key order is non-deterministic —
 /// R-side assertions must sort by name.
 /// @param df data.frame with `label` (character) and `weights` (list of named lists of doubles).
@@ -386,7 +386,7 @@ pub fn reader_map_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_hashmap_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RHashMapRow> = <Vec<RHashMapRow>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RHashMapRow> = <Vec<RHashMapRow>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -397,13 +397,13 @@ pub fn reader_hashmap_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_map_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
 // region: non-String-keyed map round-trip (#919)
 
-/// `Vec::<WithIntMap>::from_dataframe(&df)` → rebuild. Columns `id`, `tally_keys`,
+/// `Vec::<WithIntMap>::from_dataframe(df)` → rebuild. Columns `id`, `tally_keys`,
 /// `tally_values` (VECSXP of integer/double vectors). BTreeMap keys come back sorted.
 /// @param df data.frame with `id` (integer), `tally_keys` (list of integer vectors),
 ///   and `tally_values` (list of double vectors).
@@ -411,7 +411,7 @@ pub fn reader_map_roundtrip_par(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn with_int_map_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -423,7 +423,7 @@ pub fn with_int_map_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn with_int_map_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -451,7 +451,7 @@ pub fn gc_stress_reader_struct_flatten() {
         })
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
-    let _back: Vec<ROuter> = <Vec<ROuter>>::from_dataframe(&df).unwrap();
+    let _back: Vec<ROuter> = <Vec<ROuter>>::from_dataframe(*df).unwrap();
     let _ = df;
 }
 
@@ -470,7 +470,7 @@ pub fn gc_stress_reader_nested_flatten() {
         })
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
-    let _back: Vec<RNestOuter> = <Vec<RNestOuter>>::from_dataframe(&df).unwrap();
+    let _back: Vec<RNestOuter> = <Vec<RNestOuter>>::from_dataframe(*df).unwrap();
     let _ = df;
 }
 
@@ -485,7 +485,7 @@ pub fn gc_stress_reader_list_column() {
         })
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
-    let _back: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe(&df).unwrap();
+    let _back: Vec<RListVecRow> = <Vec<RListVecRow>>::from_dataframe(*df).unwrap();
     let _ = df;
 }
 
@@ -504,7 +504,7 @@ pub fn gc_stress_reader_map_column() {
         })
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
-    let _back: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe(&df).unwrap();
+    let _back: Vec<RMapRow> = <Vec<RMapRow>>::from_dataframe(*df).unwrap();
     let _ = df;
 }
 
@@ -525,7 +525,7 @@ pub fn gc_stress_reader_int_map() {
         })
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
-    let _back: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe(&df).unwrap();
+    let _back: Vec<WithIntMap> = <Vec<WithIntMap>>::from_dataframe(*df).unwrap();
     assert_eq!(rows, _back);
     let _ = df;
 }
@@ -558,7 +558,7 @@ where
     // Root the frame for the whole read — see region header.
     let _guard = unsafe { miniextendr_api::OwnedProtect::new(sexp) };
     let frame = DataFrame::from_sexp(sexp).unwrap();
-    let back: Vec<R> = <Vec<R>>::from_dataframe(&frame).unwrap();
+    let back: Vec<R> = <Vec<R>>::from_dataframe(frame).unwrap();
     assert_eq!(rows, back);
 }
 
@@ -736,7 +736,7 @@ pub fn gc_stress_reader_hashmap() {
 #[miniextendr]
 pub fn reader_fixed_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RFixedRow> = <Vec<RFixedRow>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<RFixedRow> = <Vec<RFixedRow>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -747,7 +747,7 @@ pub fn reader_fixed_roundtrip_par(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn reader_flatten_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<ROuter> = <Vec<ROuter>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<ROuter> = <Vec<ROuter>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -775,7 +775,7 @@ where
     let sexp = rows.clone().into_dataframe().unwrap().into_sexp();
     let _guard = unsafe { miniextendr_api::OwnedProtect::new(sexp) };
     let frame = DataFrame::from_sexp(sexp).unwrap();
-    let back: Vec<R> = <Vec<R>>::from_dataframe_par(&frame).unwrap();
+    let back: Vec<R> = <Vec<R>>::from_dataframe_par(frame).unwrap();
     assert_eq!(rows, back);
 }
 

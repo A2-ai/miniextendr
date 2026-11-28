@@ -8,7 +8,7 @@ use miniextendr_api::miniextendr;
 /// @param paths Character vector of paths to test.
 #[miniextendr]
 pub fn globset_is_match(patterns: Vec<String>, paths: Vec<String>) -> Result<Vec<bool>, String> {
-    let set = build_globset(&patterns, &GlobOptions::default()).map_err(|e| e.to_string())?;
+    let set = build_globset(&patterns, GlobOptions::default()).map_err(|e| e.to_string())?;
     Ok(globset_impl::globset_is_match(&set, &paths))
 }
 
@@ -31,7 +31,7 @@ pub fn globset_is_match_opts(
         case_insensitive,
         backslash_escape,
     };
-    let set = build_globset(&patterns, &opts).map_err(|e| e.to_string())?;
+    let set = build_globset(&patterns, opts).map_err(|e| e.to_string())?;
     Ok(globset_impl::globset_is_match(&set, &paths))
 }
 
@@ -40,6 +40,6 @@ pub fn globset_is_match_opts(
 /// @param path Single path to test.
 #[miniextendr]
 pub fn globset_which_match(patterns: Vec<String>, path: String) -> Result<Vec<i32>, String> {
-    let set = build_globset(&patterns, &GlobOptions::default()).map_err(|e| e.to_string())?;
+    let set = build_globset(&patterns, GlobOptions::default()).map_err(|e| e.to_string())?;
     Ok(globset_impl::globset_matches(&set, &path))
 }

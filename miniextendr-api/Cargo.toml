@@ -250,3 +250,6 @@ zstd = { version = "0.13", optional = true }
 [dev-dependencies]
 miniextendr-engine = { workspace = true }
 proptest = "1.6"
+
+[lints]
+workspace = true

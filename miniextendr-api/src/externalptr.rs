@@ -1130,6 +1130,10 @@ pub fn __mx_borrow<T: TypedExternal>(ptr: &ExternalPtr<T>) -> ExternalPtrRef<'_,
 /// [`ExternalPtr::borrow_mut`] for a generated wrapper's argument.
 #[doc(hidden)]
 #[inline]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "generated wrappers hand over their &mut T argument's handle, also through Option::as_mut(..).map(..)"
+)]
 pub fn __mx_borrow_mut<T: TypedExternal>(ptr: &mut ExternalPtr<T>) -> ExternalPtrMut<'_, T> {
     ptr.borrow_mut()
 }
@@ -1875,7 +1879,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// is borrowed (by a running call holding it, or another handle's
     /// [`borrow`](Self::borrow)), and for a type-erased `ExternalPtr<()>`.
     #[inline]
-    pub fn borrow_mut(&mut self) -> ExternalPtrMut<'_, T> {
+    pub fn borrow_mut(&self) -> ExternalPtrMut<'_, T> {
         ExternalPtrMut::from_guard(&self.sexp, borrow_value_mut(self.value_cell()))
     }
 
@@ -1925,7 +1929,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Returns the raw mutable pointer without consuming the ExternalPtr.
     #[inline]
-    pub fn as_mut_ptr(&mut self) -> *mut T {
+    pub fn as_mut_ptr(&self) -> *mut T {
         self.value_ptr()
     }
 
@@ -2372,7 +2376,7 @@ impl ExternalPtr<()> {
     /// With the R error of class `miniextendr_borrow_conflict` while the value
     /// is borrowed.
     #[inline]
-    pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<ExternalPtrMut<'_, T>> {
+    pub fn downcast_mut<T: TypedExternal>(&self) -> Option<ExternalPtrMut<'_, T>> {
         self.downcast_cell::<T>()
             .map(|cell| ExternalPtrMut::from_guard(&self.sexp, borrow_value_mut(cell)))
     }
@@ -2697,9 +2701,9 @@ where
     /// Creates a new SEXP with `T`'s type information (the original
     /// `MaybeUninit<T>` SEXP becomes an orphaned shell, cleaned up by GC).
     #[inline]
-    pub fn write(mut self, value: T) -> ExternalPtr<T> {
+    pub fn write(self, value: T) -> ExternalPtr<T> {
         unsafe {
-            (*Self::as_mut_ptr(&mut self)).write(value);
+            (*Self::as_mut_ptr(&self)).write(value);
             self.assume_init()
         }
     }

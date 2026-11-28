@@ -42,5 +42,24 @@ repository = "https://github.com/A2-ai/miniextendr"
 keywords = ["r", "ffi", "bindings"]
 categories = ["api-bindings", "external-ffi-bindings"]
 
+# Clippy lints that are off by default and, with clippy's default settings,
+# also skip pub items (clippy.toml turns that skip off). CI's -D warnings
+# makes them errors; a deliberate exception carries
+# #[expect(clippy::<lint>, reason = "...")] at the item (#2432).
+# single_call_fn, the twelfth such lint, would flag every function called
+# from only one place.
+[workspace.lints.clippy]
+large_types_passed_by_value = "warn"
+linkedlist = "warn"
+needless_pass_by_ref_mut = "warn"
+option_option = "warn"
+rc_buffer = "warn"
+rc_mutex = "warn"
+ref_option = "warn"
+trivially_copy_pass_by_ref = "warn"
+unnecessary_box_returns = "warn"
+unnecessary_wraps = "warn"
+unused_self = "warn"
+
 [profile.release]
 debug-assertions = true

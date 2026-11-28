@@ -310,6 +310,10 @@ impl ProtectPool {
     /// This is the pool equivalent of `R_Reprotect`: O(1), and it allocates
     /// nothing, so a fresh `sexp` is safe. Call it on R's main thread.
     #[inline]
+    #[expect(
+        clippy::needless_pass_by_ref_mut,
+        reason = "replaces a rooted slot through FFI; &mut keeps slot updates exclusive"
+    )]
     pub fn replace(&mut self, key: ProtectKey, sexp: SEXP) -> bool {
         let Ok(slot) = usize::try_from(key.slot) else {
             return false;

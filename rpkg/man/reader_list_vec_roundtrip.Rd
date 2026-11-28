@@ -10,5 +10,5 @@ reader_list_vec_roundtrip(df)
 \item{df}{data.frame with \code{id} (integer) and \code{data} (list of numeric vectors).}
 }
 \description{
-\verb{Vec::<RListVecRow>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{data} (list-column).
+\verb{Vec::<RListVecRow>::from_dataframe(df)} → rebuild. Columns \code{id}, \code{data} (list-column).
 }

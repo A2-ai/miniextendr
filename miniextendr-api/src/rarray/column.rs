@@ -25,12 +25,12 @@ impl<T: RNativeType> RMatrix<T> {
     ///
     /// Keep this matrix valid and rooted on R's main thread throughout the
     /// call. Its type and shape must remain valid across reentrant R code.
-    pub unsafe fn copy_column_to_r(&self, col: usize) -> Result<Preserved, SexpError> {
+    pub unsafe fn copy_column_to_r(self, col: usize) -> Result<Preserved, SexpError> {
         // The result allocation and the provider can both signal. The bridge
         // lets Rust owners unwind before R resumes the original condition.
         let dim = self.as_sexp().get_dim();
         let _dim = unsafe { crate::OwnedProtect::new(dim) };
-        unsafe { crate::unwind_protect::call_r_callback(|| copy_column(*self, dim, col)) }?
+        unsafe { crate::unwind_protect::call_r_callback(|| copy_column(self, dim, col)) }?
     }
 }
 

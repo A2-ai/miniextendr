@@ -169,3 +169,6 @@ harness = false
 name = "native_borrow"
 harness = false
 required-features = ["either"]
+
+[lints]
+workspace = true

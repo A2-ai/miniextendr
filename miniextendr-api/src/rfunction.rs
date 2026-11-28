@@ -60,7 +60,7 @@ pub struct RFunction {
 impl RFunction {
     /// The function itself.
     #[inline]
-    pub fn as_sexp(&self) -> SEXP {
+    pub fn as_sexp(self) -> SEXP {
         self.sexp
     }
 
@@ -72,7 +72,7 @@ impl RFunction {
     /// R's main thread, while the function is alive (during the `.Call()`
     /// that received it, or while rooted).
     #[inline]
-    pub unsafe fn call(&self) -> RCall {
+    pub unsafe fn call(self) -> RCall {
         unsafe { RCall::from_sexp(self.sexp) }
     }
 }

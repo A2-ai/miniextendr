@@ -78,6 +78,10 @@ impl Gauge {
         self.checked().map_err(|_| ())
     }
 
+    #[expect(
+        clippy::unused_self,
+        reason = "a computed-field getter takes &self; this one checks that () reads as NULL"
+    )]
     fn nothing(&self) {}
 }
 
@@ -142,7 +146,7 @@ fn a_computed_field_is_a_zero_sized_marker() {
 #[test]
 fn computed_getters_read_the_live_value_on_every_read() {
     r_test_utils::with_r_thread(|| {
-        let mut owner = ExternalPtr::new(gauge(3));
+        let owner = ExternalPtr::new(gauge(3));
         let x = owner.as_sexp();
         assert_eq!(int(read(x, "doubled").unwrap()), 6);
         assert_eq!(int(read(x, "checked").unwrap()), 3);

@@ -102,6 +102,10 @@ mod imp {
     /// # Safety
     ///
     /// As [`state`].
+    #[expect(
+        clippy::unnecessary_wraps,
+        reason = "the build for R before 4.6 returns None; both builds share the signature"
+    )]
     pub(crate) unsafe fn is_blocking(sexp: SEXP) -> Option<bool> {
         Some(unsafe { (*rconn(sexp)).blocking != Rboolean::FALSE })
     }

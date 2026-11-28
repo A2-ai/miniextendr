@@ -10,5 +10,5 @@ reader_list_multi_roundtrip(df)
 \item{df}{data.frame with \code{ids} (list of integer vectors) and \code{names} (list of character vectors).}
 }
 \description{
-\verb{Vec::<RListMultiRow>::from_dataframe(&df)} → rebuild. Columns \code{ids}, \code{names} (both list-columns).
+\verb{Vec::<RListMultiRow>::from_dataframe(df)} → rebuild. Columns \code{ids}, \code{names} (both list-columns).
 }

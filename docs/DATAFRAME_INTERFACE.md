@@ -7,7 +7,7 @@ conversion traits mirror the scalar/vector surface (`IntoR` / `TryFromSexp`):
 | Trait | Method | Direction | Analogue |
 |---|---|---|---|
 | `IntoDataFrame` | `rows.into_dataframe()? -> BuiltDataFrame` | Rust → R | `IntoR` |
-| `FromDataFrame` | `Vec::<Row>::from_dataframe(&df)? -> Vec<Row>` | R → Rust | `TryFromSexp` |
+| `FromDataFrame` | `Vec::<Row>::from_dataframe(df)? -> Vec<Row>` | R → Rust | `TryFromSexp` |
 
 Both verbs live **on the data** (`Vec<Row>` / `&DataFrame`), not on a companion
 type. Errors are a single [`DataFrameError`]. There is one NA contract: missing
@@ -33,7 +33,7 @@ pub struct Point { pub x: f64, pub y: f64, pub label: String }
 // Rust → R: build a data.frame from a row vector.
 #[miniextendr]
 fn make_points(df: DataFrame) -> BuiltDataFrame {
-    let rows: Vec<Point> = Vec::<Point>::from_dataframe(&df).unwrap();   // R → Rust
+    let rows: Vec<Point> = Vec::<Point>::from_dataframe(df).unwrap();   // R → Rust
     rows.into_dataframe().unwrap()                                       // Rust → R
 }
 ```
@@ -46,7 +46,7 @@ hidden threshold:
 
 ```rust
 let df   = rows.into_dataframe_par()?;          // #777 flattened (column,row-range) fill
-let rows = Vec::<Point>::from_dataframe_par(&df)?; // #765 off-main-thread row assembly
+let rows = Vec::<Point>::from_dataframe_par(df)?; // #765 off-main-thread row assembly
 ```
 
 Dropping `_par` (building without the `rayon` feature) degrades cleanly to the
@@ -122,7 +122,7 @@ concrete `Vec<Row>` conversions):
 
 ```rust
 let df   = SerdeRows(rows).into_dataframe()?;
-let rows = SerdeRows::<Row>::from_dataframe(&df)?.into_inner();
+let rows = SerdeRows::<Row>::from_dataframe(df)?.into_inner();
 ```
 
 ## Migration from the legacy surface
@@ -132,7 +132,7 @@ let rows = SerdeRows::<Row>::from_dataframe(&df)?.into_inner();
 | `DataFrameView`, `convert::DataFrame<T>` (duplicate historical types) | `DataFrame` view + `BuiltDataFrame` owner |
 | `ToDataFrame<Companion>` return wrapper + `value.to_data_frame()` | `rows.into_dataframe()?` |
 | `convert::SerializeDataFrame<T>` / `AsSerializeRow<T>` | `serde::SerdeRows(rows).into_dataframe()?` |
-| `Row::try_from_dataframe(sexp)` (bare `String` error) | `Vec::<Row>::from_dataframe(&df)?` (`DataFrameError`) |
+| `Row::try_from_dataframe(sexp)` (bare `String` error) | `Vec::<Row>::from_dataframe(df)?` (`DataFrameError`) |
 | `RDataFrameBuilder::new(n)` | `DataFrame::builder(n)` |
 | four conversion error types | one `DataFrameError` |
 

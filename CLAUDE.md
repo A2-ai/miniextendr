@@ -377,8 +377,14 @@ Reproduce all three before pushing.
 
 The root `clippy.toml` sets `avoid-breaking-exported-api = false`, so the
 lints clippy normally skips on `pub` items (`wrong_self_convention`,
-`upper_case_acronyms`, …) fire there too. Fix the item; an R C-header name
-keeps its spelling under `#[expect(clippy::upper_case_acronyms, reason = …)]`.
+`upper_case_acronyms`, …) fire there too. The root `Cargo.toml`'s
+`[workspace.lints.clippy]` also turns on the off-by-default lints of that set
+(`trivially_copy_pass_by_ref`, `needless_pass_by_ref_mut`, `unnecessary_wraps`,
+`unused_self`, `ref_option`, …) for every workspace crate (`[lints]
+workspace = true`; rpkg and the cross-package crates are separate workspaces).
+Fix the item; a deliberate exception carries `#[expect(clippy::<lint>, reason
+= "...")]` at the item, e.g. an R C-header name keeps its spelling under
+`upper_case_acronyms` (#2432).
 
 ### UI test snapshots
 

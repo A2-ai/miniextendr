@@ -2,11 +2,11 @@
 //!
 //! Two rungs, cheapest first:
 //!
-//! 1. **Typed rows, grouped Rust-side** — after `Vec::<Row>::from_dataframe(&df)?`,
+//! 1. **Typed rows, grouped Rust-side** — after `Vec::<Row>::from_dataframe(df)?`,
 //!    grouping is plain Rust. [`group_rows`] makes the idiom discoverable:
 //!
 //!    ```ignore
-//!    let rows: Vec<Obs> = Vec::from_dataframe(&df)?;
+//!    let rows: Vec<Obs> = Vec::from_dataframe(df)?;
 //!    let by_site = group_rows(rows, |r| r.site.clone());
 //!    // by_site: BTreeMap<String, Vec<Obs>> — plain Rust data, rayon-safe.
 //!    ```
@@ -390,7 +390,7 @@ impl GroupedDataFrame {
     where
         Vec<T>: FromDataFrame,
     {
-        let rows = Vec::<T>::from_dataframe(&self.source)?;
+        let rows = Vec::<T>::from_dataframe(self.source)?;
         let mut slots: Vec<Option<T>> = rows.into_iter().map(Some).collect();
         Ok(self
             .groups
@@ -421,14 +421,14 @@ impl DataFrame {
     ///
     /// NA keys form one group, ordered last (unlike R `split()`, which drops
     /// NA-keyed rows). See the [module docs](self) for the full key semantics.
-    pub fn group_by(&self, col: &str) -> Result<GroupedDataFrame, DataFrameError> {
+    pub fn group_by(self, col: &str) -> Result<GroupedDataFrame, DataFrameError> {
         let column = self
             .column_raw(col)
             .ok_or_else(|| DataFrameError::NoSuchColumn(col.to_string()))?;
         let groups = column_groups(column, col)?;
         // Root the source for the GroupedDataFrame's lifetime (see its GC
         // rooting docs).
-        Ok(GroupedDataFrame::new(*self, groups))
+        Ok(GroupedDataFrame::new(self, groups))
     }
 
     /// Partition this frame's rows by a composite key over several columns —
@@ -466,7 +466,7 @@ impl DataFrame {
     /// An empty slice is an error. A single-column slice delegates to
     /// [`group_by`](Self::group_by) and yields **scalar** keys (not 1-tuples), so
     /// callers never have to special-case one-element tuples.
-    pub fn group_by_multi(&self, cols: &[&str]) -> Result<GroupedDataFrame, DataFrameError> {
+    pub fn group_by_multi(self, cols: &[&str]) -> Result<GroupedDataFrame, DataFrameError> {
         if cols.is_empty() {
             return Err(DataFrameError::EmptyGroupColumns);
         }
@@ -537,7 +537,7 @@ impl DataFrame {
         });
         non_na.extend(na_tuples);
 
-        Ok(GroupedDataFrame::new(*self, non_na))
+        Ok(GroupedDataFrame::new(self, non_na))
     }
 
     /// Read a dplyr-grouped frame's grouping **declaration** — its grouping
@@ -700,7 +700,7 @@ impl DataFrame {
     /// R protects as a `.Call` argument frame for the duration of the call — so
     /// it needs no separate root. Only the returned [`GroupedDataFrame`] roots
     /// the **source** frame for its own lifetime (see its GC-rooting docs).
-    pub fn group_by_metadata(&self) -> Result<GroupedDataFrame, DataFrameError> {
+    pub fn group_by_metadata(self) -> Result<GroupedDataFrame, DataFrameError> {
         let attr = self
             .groups_attr()?
             .ok_or(DataFrameError::NotGroupedDataFrame)?;
@@ -741,7 +741,7 @@ impl DataFrame {
         // Every index is in range; now the rows must partition the frame.
         check_rows_partition(&groups, nrow)?;
 
-        Ok(GroupedDataFrame::new(*self, groups))
+        Ok(GroupedDataFrame::new(self, groups))
     }
 
     /// The `groups` attribute of a dplyr-grouped frame, checked the way

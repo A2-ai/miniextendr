@@ -18,7 +18,7 @@ fn externalptr_suite() {
 }
 
 fn test_basic_access() {
-    let mut ext = ExternalPtr::new(10i32);
+    let ext = ExternalPtr::new(10i32);
     assert_eq!(*ext.borrow(), 10);
 
     *ext.borrow_mut() = 42;

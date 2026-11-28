@@ -91,15 +91,9 @@ pub struct ExternalPtrRef<'a, T: TypedExternal + ?Sized> {
 /// class `miniextendr_borrow_conflict`. Pass it on without moving it with
 /// [`rb_mut`](Self::rb_mut), or as a shared view with [`rb`](Self::rb).
 ///
-/// A view borrows its handle for as long as it lives:
-/// ```compile_fail,E0502
-/// use miniextendr_api::{ExternalPtr, ExternalPtrMut, ExternalPtrRef, TypedExternal};
-/// fn overlap<T: TypedExternal>(owner: &mut ExternalPtr<T>) {
-///     let mut first = owner.borrow_mut();
-///     let second = owner.borrow();
-///     let _ = (&mut *first, second);
-/// }
-/// ```
+/// Like `RefCell::borrow_mut`, `ExternalPtr::borrow_mut` takes the handle by
+/// shared reference, so that check runs when the second borrow is made, not
+/// in the borrow checker.
 ///
 /// A reborrow ends before the view is used again:
 /// ```compile_fail,E0499

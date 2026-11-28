@@ -95,11 +95,11 @@ fn equivalent_scalar_spellings_keep_native_columns_and_roundtrip() {
             frame.column::<Vec<Option<String>>>("label").unwrap(),
             [Some("first".into()), Some("second".into()), None]
         );
-        assert_eq!(Vec::<Scalars>::from_dataframe(&frame).unwrap(), rows);
+        assert_eq!(Vec::<Scalars>::from_dataframe(*frame).unwrap(), rows);
         #[cfg(feature = "rayon")]
         {
             let frame = rows.clone().into_dataframe_par().unwrap();
-            assert_eq!(Vec::<Scalars>::from_dataframe_par(&frame).unwrap(), rows);
+            assert_eq!(Vec::<Scalars>::from_dataframe_par(*frame).unwrap(), rows);
         }
     });
 }

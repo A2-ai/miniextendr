@@ -513,7 +513,7 @@ fn prefer_conflict_marker(input: &DeriveInput) -> TokenStream {
 ///
 /// The type must also derive `IntoList` for this to compile. The generated
 /// `IntoR::Error` is `Infallible` (list conversion is infallible for valid structs).
-pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
+pub fn derive_prefer_list(input: DeriveInput) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let conflict_marker = prefer_conflict_marker(&input);
@@ -546,7 +546,7 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
         #conflict_marker
     };
 
-    Ok(expand)
+    expand
 }
 
 /// Derive `PreferExternalPtr`: emits an `IntoR` impl that wraps the value in
@@ -555,7 +555,7 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
 /// The type must have a hand-written `TypedExternal` impl; `ExternalPtr` derive
 /// already supplies `IntoR` and must not be combined with this derive.
 /// The generated `IntoR::Error` is `Infallible`.
-pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream> {
+pub fn derive_prefer_externalptr(input: DeriveInput) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let conflict_marker = prefer_conflict_marker(&input);
@@ -588,7 +588,7 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
         #conflict_marker
     };
 
-    Ok(expand)
+    expand
 }
 
 /// Derive `PreferRNativeType`: emits an `IntoR` impl that wraps the value in
@@ -597,7 +597,7 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
 /// This routes conversion through native R vector allocation, bypassing list/ExternalPtr
 /// paths. The type must also implement `RNativeType` for the `AsRNative` wrapper to compile.
 /// The generated `IntoR::Error` is `Infallible`.
-pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
+pub fn derive_prefer_rnative(input: DeriveInput) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let conflict_marker = prefer_conflict_marker(&input);
@@ -634,7 +634,7 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
         #conflict_marker
     };
 
-    Ok(expand)
+    expand
 }
 
 /// Derive `PreferVctrs`: emits an `IntoR` impl that converts the type to its R vctrs object
@@ -645,7 +645,7 @@ pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
 /// `value.into_vctrs().map_err(...)` by hand. The generated `IntoR::Error` is
 /// `VctrsBuildError`; a build failure surfaces in R as an error condition.
 #[cfg(feature = "vctrs")]
-pub fn derive_prefer_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
+pub fn derive_prefer_vctrs(input: DeriveInput) -> TokenStream {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
     let conflict_marker = prefer_conflict_marker(&input);
@@ -668,5 +668,5 @@ pub fn derive_prefer_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         #conflict_marker
     };
 
-    Ok(expand)
+    expand
 }

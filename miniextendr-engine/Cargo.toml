@@ -25,3 +25,6 @@ tempfile = "3.12"
 default = []
 # Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
 # for embedding R. It is not intended for use in R packages.
+
+[lints]
+workspace = true

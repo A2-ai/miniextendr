@@ -3936,12 +3936,6 @@ impl<E: std::error::Error> AsRError<E> {
         self.0
     }
 
-    /// Get the Rust type name of the wrapped error (for programmatic matching).
-    #[inline]
-    pub fn rust_type_name(&self) -> &'static str {
-        std::any::type_name::<E>()
-    }
-
     /// Collect the full cause chain as a `Vec<String>`.
     pub fn cause_chain(&self) -> Vec<String> {
         let mut chain = vec![self.0.to_string()];

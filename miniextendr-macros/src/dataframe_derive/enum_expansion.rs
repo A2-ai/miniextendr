@@ -42,7 +42,7 @@ use std::collections::HashMap;
 ///
 /// The write/read verbs are the trait surface — `rows.into_dataframe()?`
 /// (`IntoDataFrame` / `AsDataFrameExt`), `rows.into_dataframe_split()`
-/// (`IntoDataFrameSplit`), `Vec::<Row>::from_dataframe(&df)?`
+/// (`IntoDataFrameSplit`), `Vec::<Row>::from_dataframe(df)?`
 /// (`FromDataFrame`) or the one-call `Row::try_from_dataframe(sexp)` reader, and the
 /// pure-Rust `ColumnarFrame` companion verbs. The row type keeps two `#[doc(hidden)]`
 /// helpers: `to_dataframe(rows) -> companion` for the nested-companion write path
@@ -2293,7 +2293,7 @@ pub(super) fn derive_enum_dataframe(
         let _ = reader_ts; // used below in row_methods
         quote! {
             fn rows_from_dataframe(
-                __df: &::miniextendr_api::dataframe::DataFrame,
+                __df: ::miniextendr_api::dataframe::DataFrame,
             ) -> ::core::option::Option<::core::result::Result<::std::vec::Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
                 ::core::option::Option::Some(
                     <#row_name #ty_generics>::try_from_dataframe(__df.as_sexp())
@@ -2303,7 +2303,7 @@ pub(super) fn derive_enum_dataframe(
 
             ::miniextendr_api::__dataframe_row_when_rayon! {
                 fn rows_from_dataframe_par(
-                    __df: &::miniextendr_api::dataframe::DataFrame,
+                    __df: ::miniextendr_api::dataframe::DataFrame,
                 ) -> ::core::option::Option<::core::result::Result<::std::vec::Vec<Self>, ::miniextendr_api::dataframe::DataFrameError>> {
                     ::core::option::Option::Some(
                         #par_reader_body
@@ -3627,7 +3627,7 @@ fn build_enum_reader(
                                 .select(&__sel)
                                 .strip_prefix(__prefix)
                                 .select_rows(&__present_indices);
-                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub_dense) {
+                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(*__sub_dense) {
                                 ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
                                 ::core::option::Option::Some(::core::result::Result::Err(__e)) => {
                                     return ::core::result::Result::Err(::std::format!(
@@ -3832,7 +3832,7 @@ fn build_enum_reader(
         ///
         /// This is the one-call `SEXP → Vec<Self>` reader; the same conversion is also
         /// reachable via the boundary-crossing [`FromDataFrame`] trait as
-        /// `Vec::<Self>::from_dataframe(&df)`.
+        /// `Vec::<Self>::from_dataframe(df)`.
         ///
         /// [`FromDataFrame`]: ::miniextendr_api::dataframe::FromDataFrame
         pub fn try_from_dataframe(

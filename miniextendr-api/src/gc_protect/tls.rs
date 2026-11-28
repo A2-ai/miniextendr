@@ -207,7 +207,7 @@ pub struct TlsRoot {
 impl TlsRoot {
     /// Get the underlying SEXP.
     #[inline]
-    pub fn get(&self) -> SEXP {
+    pub fn get(self) -> SEXP {
         self.sexp
     }
 

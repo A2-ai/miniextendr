@@ -95,6 +95,10 @@ impl NativeBorrow {
     /// `Either<T, R>`, where `right` is `R`'s: character or factor input goes
     /// to the owned choice `T`, any other input to `R`. Returns `None` when
     /// `R` borrows nothing.
+    #[expect(
+        clippy::ref_option,
+        reason = "BorrowShape::ChoiceOr stores this &'static reference"
+    )]
     pub const fn choice_or(right: &'static Option<Self>) -> Option<Self> {
         if right.is_none() {
             None

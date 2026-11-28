@@ -8,7 +8,10 @@ pub fn dispatch(cmd: &RenderCmd, ctx: &ProjectContext, quiet: bool) -> Result<()
     match cmd {
         RenderCmd::KnitrSetup => render_knitr_setup(ctx, quiet),
         RenderCmd::Rmarkdown => render_rmarkdown_setup(ctx, quiet),
-        RenderCmd::Quarto => render_quarto_setup(ctx, quiet),
+        RenderCmd::Quarto => {
+            render_quarto_setup(ctx, quiet);
+            Ok(())
+        }
         RenderCmd::QuartoPre => render_quarto_pre(ctx, quiet),
         RenderCmd::Html => render_format(ctx, "html", quiet),
         RenderCmd::Pdf => render_format(ctx, "pdf", quiet),
@@ -46,7 +49,7 @@ fn render_rmarkdown_setup(ctx: &ProjectContext, quiet: bool) -> Result<()> {
 }
 
 /// Set up Quarto integration.
-fn render_quarto_setup(ctx: &ProjectContext, quiet: bool) -> Result<()> {
+fn render_quarto_setup(ctx: &ProjectContext, quiet: bool) {
     // Create _quarto.yml pre-render hook
     let quarto_yml = ctx.root.join("_quarto.yml");
     if !quarto_yml.exists() && !quiet {
@@ -55,7 +58,6 @@ fn render_quarto_setup(ctx: &ProjectContext, quiet: bool) -> Result<()> {
         println!("  project:");
         println!("    pre-render: miniextendr workflow sync");
     }
-    Ok(())
 }
 
 /// Run Quarto pre-render: sync project before render.

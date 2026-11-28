@@ -60,7 +60,7 @@ pub fn df_option_scalar_rows() -> BuiltDataFrame {
 /// @param df A data.frame with the `id`, `weight`, `label`, `flag`, `count` columns.
 #[miniextendr]
 pub fn df_option_scalar_roundtrip(df: DataFrame) -> BuiltDataFrame {
-    Vec::<OptObs>::from_dataframe(&df)
+    Vec::<OptObs>::from_dataframe(df)
         .unwrap()
         .into_dataframe()
         .unwrap()
@@ -71,7 +71,7 @@ pub fn df_option_scalar_roundtrip(df: DataFrame) -> BuiltDataFrame {
 /// @param df A data.frame with the `id`, `weight`, `label`, `flag`, `count` columns.
 #[miniextendr]
 pub fn df_option_scalar_none_count(df: DataFrame) -> i32 {
-    Vec::<OptObs>::from_dataframe(&df)
+    Vec::<OptObs>::from_dataframe(df)
         .unwrap()
         .iter()
         .map(|r| {

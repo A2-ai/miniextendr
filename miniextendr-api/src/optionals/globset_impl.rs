@@ -29,7 +29,7 @@
 //!
 //! #[miniextendr]
 //! fn match_r_files(paths: Vec<String>) -> Result<Vec<bool>, String> {
-//!     let set = build_globset(&["*.R".to_string()], &GlobOptions::default())
+//!     let set = build_globset(&["*.R".to_string()], GlobOptions::default())
 //!         .map_err(|e| e.to_string())?;
 //!     Ok(paths.iter().map(|p| set.is_match(p)).collect())
 //! }
@@ -76,7 +76,7 @@ impl Default for GlobOptions {
 /// # Errors
 ///
 /// Returns the underlying [`globset::Error`] if any pattern is invalid.
-pub fn build_globset(patterns: &[String], opts: &GlobOptions) -> Result<GlobSet, globset::Error> {
+pub fn build_globset(patterns: &[String], opts: GlobOptions) -> Result<GlobSet, globset::Error> {
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         let glob = GlobBuilder::new(pattern)
@@ -123,7 +123,7 @@ impl TryFromSexp for GlobSet {
                 "globset requires at least one pattern".to_string(),
             ));
         }
-        build_globset(&patterns, &GlobOptions::default())
+        build_globset(&patterns, GlobOptions::default())
             .map_err(|e| SexpError::InvalidValue(format!("invalid glob pattern: {e}")))
     }
 }

@@ -10,6 +10,6 @@ reader_map_roundtrip(df)
 \item{df}{data.frame with \code{id} (integer) and \code{opts} (list of named lists of integers).}
 }
 \description{
-\verb{Vec::<RMapRow>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{opts}
+\verb{Vec::<RMapRow>::from_dataframe(df)} → rebuild. Columns \code{id}, \code{opts}
 (list of named lists). BTreeMap keys come back sorted.
 }

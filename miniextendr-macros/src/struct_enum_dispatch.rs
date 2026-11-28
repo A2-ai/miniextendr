@@ -321,7 +321,7 @@ fn expand_struct(
 
         // Apply native preference marker if specified
         let prefer = if attrs.prefer.as_deref() == Some("native") {
-            crate::list_derive::derive_prefer_rnative(derive_input)?
+            crate::list_derive::derive_prefer_rnative(derive_input)
         } else {
             proc_macro2::TokenStream::new()
         };

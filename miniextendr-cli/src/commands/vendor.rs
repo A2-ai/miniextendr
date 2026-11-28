@@ -19,8 +19,14 @@ pub fn dispatch(cmd: &VendorCmd, ctx: &ProjectContext, quiet: bool, json: bool) 
         } => vendor_miniextendr(ctx, local_path.as_deref(), quiet),
         VendorCmd::CratesIo => vendor_crates_io(ctx, quiet),
         VendorCmd::Sync => vendor_sync(ctx, quiet),
-        VendorCmd::SyncCheck => vendor_sync_check(ctx, quiet),
-        VendorCmd::SyncDiff => vendor_sync_diff(ctx),
+        VendorCmd::SyncCheck => {
+            vendor_sync_check(ctx, quiet);
+            Ok(())
+        }
+        VendorCmd::SyncDiff => {
+            vendor_sync_diff(ctx);
+            Ok(())
+        }
         VendorCmd::CacheInfo => vendor_cache_info(json),
         VendorCmd::CacheClear { cache_version } => {
             vendor_cache_clear(cache_version.as_deref(), quiet)
@@ -210,7 +216,7 @@ fn vendor_sync(ctx: &ProjectContext, quiet: bool) -> Result<()> {
 }
 
 /// Verify vendored crates match workspace sources.
-fn vendor_sync_check(ctx: &ProjectContext, quiet: bool) -> Result<()> {
+fn vendor_sync_check(ctx: &ProjectContext, quiet: bool) {
     let vendor_dir = ctx.root.join("vendor");
     if !vendor_dir.is_dir() {
         if !quiet {
@@ -226,7 +232,7 @@ fn vendor_sync_check(ctx: &ProjectContext, quiet: bool) -> Result<()> {
             if !quiet {
                 eprintln!("Not in a monorepo. Cannot check vendor sync.");
             }
-            return Ok(());
+            return;
         }
     };
 
@@ -268,11 +274,10 @@ fn vendor_sync_check(ctx: &ProjectContext, quiet: bool) -> Result<()> {
     } else if !quiet {
         println!("Vendor sync check passed: all miniextendr crates match.");
     }
-    Ok(())
 }
 
 /// Show diff between workspace and vendored crates.
-fn vendor_sync_diff(ctx: &ProjectContext) -> Result<()> {
+fn vendor_sync_diff(ctx: &ProjectContext) {
     let vendor_dir = ctx.root.join("vendor");
     let workspace_root = find_workspace_root(&ctx.root);
 
@@ -280,7 +285,7 @@ fn vendor_sync_diff(ctx: &ProjectContext) -> Result<()> {
         Some(ws) => ws,
         None => {
             eprintln!("Not in a monorepo.");
-            return Ok(());
+            return;
         }
     };
 
@@ -302,7 +307,6 @@ fn vendor_sync_diff(ctx: &ProjectContext) -> Result<()> {
             println!();
         }
     }
-    Ok(())
 }
 
 /// Show cache info (uses rappdirs-like logic for cache directory).

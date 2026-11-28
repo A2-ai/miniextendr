@@ -214,7 +214,7 @@ pub fn sidecar_env_borrow_handles(
     objs: Vec<ExternalPtr<SidecarEnv>>,
     exclusive_first: bool,
 ) -> i32 {
-    let [mut first, second] =
+    let [first, second] =
         <[_; 2]>::try_from(objs).unwrap_or_else(|_| panic!("expected two objects"));
     if exclusive_first {
         let mut first = first.borrow_mut();

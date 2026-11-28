@@ -225,6 +225,10 @@ fn match_arg_null_or_passes_a_plain_na_on() {
 static CHECKS: AtomicUsize = AtomicUsize::new(0);
 
 /// Accept every value, counting the calls.
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "an ElementCheck, whose signature returns a Result"
+)]
 fn count_checks(_: SEXP) -> Result<(), RError> {
     CHECKS.fetch_add(1, Ordering::Relaxed);
     Ok(())

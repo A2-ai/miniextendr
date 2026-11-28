@@ -385,6 +385,10 @@ impl ListMut {
 
     /// Set raw SEXP element at 0-based index.
     #[inline]
+    #[expect(
+        clippy::needless_pass_by_ref_mut,
+        reason = "writes the list's R memory through FFI; &mut says so"
+    )]
     pub fn set(&mut self, idx: isize, value: SEXP) -> Result<(), SexpError> {
         if idx < 0 || idx >= self.len() {
             return Err(SexpError::InvalidValue("index out of bounds".into()));

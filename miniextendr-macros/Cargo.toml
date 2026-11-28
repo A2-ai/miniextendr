@@ -39,3 +39,6 @@ trybuild = "1.0"
 insta = "1"
 # `either`: the UI tests cover `match_arg` / `choices` parameters on `Either<T, R>`.
 miniextendr-api = { workspace = true, features = ["either"] }
+
+[lints]
+workspace = true

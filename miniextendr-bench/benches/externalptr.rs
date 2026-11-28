@@ -260,7 +260,7 @@ fn erased_downcast_mut_hit(bencher: divan::Bencher) {
             ProtectedSexp { sexp }
         })
         .bench_local_refs(|p| {
-            let mut erased = unsafe { ErasedExternalPtr::from_sexp(p.sexp) };
+            let erased = unsafe { ErasedExternalPtr::from_sexp(p.sexp) };
             let mut r = erased.downcast_mut::<SmallPayload>().unwrap();
             r.value += 1;
             divan::black_box(r.value);

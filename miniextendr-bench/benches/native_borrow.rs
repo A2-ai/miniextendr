@@ -36,6 +36,10 @@ pub fn nbb_slice(x: &[f64]) -> i32 {
 }
 
 #[miniextendr]
+#[expect(
+    clippy::needless_pass_by_ref_mut,
+    reason = "measures the &mut [f64] argument path"
+)]
 pub fn nbb_slices(a: &[f64], b: &mut [f64], c: &[i32]) -> i32 {
     i32::try_from(a.len() + b.len() + c.len()).unwrap_or(i32::MAX)
 }

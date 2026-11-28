@@ -15,6 +15,10 @@ use core::marker::PhantomData;
 #[doc(hidden)]
 pub struct Argument<T>(PhantomData<fn() -> T>);
 
+#[expect(
+    clippy::unused_self,
+    reason = "a zero-sized type witness: &self only names T at the generated call site"
+)]
 impl<T> Argument<T> {
     /// Construct a type witness without constructing an argument.
     pub const NEW: Self = Self(PhantomData);

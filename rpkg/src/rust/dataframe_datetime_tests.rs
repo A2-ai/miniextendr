@@ -62,7 +62,7 @@ pub fn df_datetime_rows() -> BuiltDataFrame {
 /// @param df A data.frame shaped like `df_datetime_rows()`.
 #[miniextendr(noexport)]
 pub fn df_datetime_roundtrip(df: DataFrame) -> BuiltDataFrame {
-    Vec::<Reading>::from_dataframe(&df)
+    Vec::<Reading>::from_dataframe(df)
         .unwrap()
         .into_dataframe()
         .unwrap()
@@ -104,7 +104,7 @@ pub fn df_datetime_enum_rows() -> BuiltDataFrame {
 /// @param df A data.frame shaped like `df_datetime_enum_rows()`.
 #[miniextendr(noexport)]
 pub fn df_datetime_enum_roundtrip(df: DataFrame) -> BuiltDataFrame {
-    Vec::<Shift>::from_dataframe(&df)
+    Vec::<Shift>::from_dataframe(df)
         .unwrap()
         .into_dataframe()
         .unwrap()

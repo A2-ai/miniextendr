@@ -10,5 +10,5 @@ reader_fixed_roundtrip(df)
 \item{df}{data.frame with \code{id} and \code{coords_1}/\code{coords_2}/\code{coords_3}.}
 }
 \description{
-\verb{Vec::<RFixedRow>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{coords_1..3}.
+\verb{Vec::<RFixedRow>::from_dataframe(df)} → rebuild. Columns \code{id}, \code{coords_1..3}.
 }

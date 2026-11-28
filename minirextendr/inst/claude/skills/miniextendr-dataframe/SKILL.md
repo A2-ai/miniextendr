@@ -11,7 +11,7 @@ scalar conversion surface:
 | Trait | Call | Direction |
 |---|---|---|
 | `IntoDataFrame` | `rows.into_dataframe()?` | `Vec<Row>` → R data.frame |
-| `FromDataFrame` | `Vec::<Row>::from_dataframe(&df)?` | R data.frame → `Vec<Row>` |
+| `FromDataFrame` | `Vec::<Row>::from_dataframe(df)?` | R data.frame → `Vec<Row>` |
 
 Both verbs live on the data itself. All errors are one type,
 `DataFrameError`. Missing cells round-trip as `Option<T>` fields for scalar
@@ -40,7 +40,7 @@ pub struct Point {
 // `DataFrame` and converts back to R automatically.
 #[miniextendr]
 pub fn shift_points(df: DataFrame, dx: f64) -> BuiltDataFrame {
-    let mut rows = Vec::<Point>::from_dataframe(&df).unwrap();
+    let mut rows = Vec::<Point>::from_dataframe(df).unwrap();
     for p in &mut rows {
         p.x += dx;
     }
@@ -112,7 +112,7 @@ with the `rayon` feature — same API either way.
 
 ```rust
 let df   = rows.into_dataframe_par()?;
-let rows = Vec::<Point>::from_dataframe_par(&df)?;
+let rows = Vec::<Point>::from_dataframe_par(df)?;
 ```
 
 Row structs are plain Rust data (no R pointers), so after extraction you can
@@ -128,7 +128,7 @@ convert through the `SerdeRows` newtype:
 use miniextendr_api::serde::SerdeRows;
 
 let df   = SerdeRows(rows).into_dataframe()?;
-let rows = SerdeRows::<Row>::from_dataframe(&df)?.into_inner();
+let rows = SerdeRows::<Row>::from_dataframe(df)?.into_inner();
 ```
 
 There are also free functions `vec_to_dataframe(...)` and

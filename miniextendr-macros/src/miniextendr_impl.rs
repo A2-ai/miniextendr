@@ -577,7 +577,7 @@ pub enum ReceiverKind {
 impl ReceiverKind {
     /// Returns true if this is an instance method (has self), including the
     /// consuming `self` receiver.
-    pub fn is_instance(&self) -> bool {
+    pub fn is_instance(self) -> bool {
         matches!(
             self,
             ReceiverKind::Ref
@@ -590,7 +590,7 @@ impl ReceiverKind {
     }
 
     /// Returns true if this is a mutable instance receiver.
-    pub fn is_mut(&self) -> bool {
+    pub fn is_mut(self) -> bool {
         matches!(self, ReceiverKind::RefMut | ReceiverKind::ExternalPtrMut)
     }
 }

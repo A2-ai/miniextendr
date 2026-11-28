@@ -10,6 +10,6 @@ reader_list_box_roundtrip(df)
 \item{df}{data.frame with \code{tag} (character) and \code{xs} (list of integer vectors).}
 }
 \description{
-\verb{Vec::<RListBoxRow>::from_dataframe(&df)} → rebuild. Columns \code{tag}, \code{xs} (list-column).
+\verb{Vec::<RListBoxRow>::from_dataframe(df)} → rebuild. Columns \code{tag}, \code{xs} (list-column).
 Exercises \code{.into()} from \verb{Vec<i32>} to \verb{Box<[i32]>} per row.
 }

@@ -1,7 +1,7 @@
 //! Round-trip fixtures for enum-path `FromDataFrame` readers (#807).
 //!
 //! `#[derive(DataFrameRow)]` now generates a `try_from_dataframe` / `_par` reader
-//! for tagged enum shapes, surfaced as `Vec::<E>::from_dataframe(&df)`. This file
+//! for tagged enum shapes, surfaced as `Vec::<E>::from_dataframe(df)`. This file
 //! exercises the following shapes:
 //!
 //!   - **Scalar tagged union** — unit + payload variants, scalar `Single` fields only.
@@ -226,7 +226,7 @@ pub enum REQualified {
 #[miniextendr]
 pub fn re_scalar_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REScalar> = <Vec<REScalar>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<REScalar> = <Vec<REScalar>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -253,7 +253,7 @@ pub fn re_scalar_align() -> SEXP {
 #[miniextendr]
 pub fn re_scalar_roundtrip_zero(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REScalar> = <Vec<REScalar>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<REScalar> = <Vec<REScalar>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -263,7 +263,7 @@ pub fn re_scalar_roundtrip_zero(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn re_scalar_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REScalar> = <Vec<REScalar>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<REScalar> = <Vec<REScalar>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -277,7 +277,7 @@ pub fn re_scalar_roundtrip_par(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn re_expand_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REExpand> = <Vec<REExpand>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<REExpand> = <Vec<REExpand>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -307,7 +307,7 @@ pub fn re_expand_align() -> SEXP {
 #[miniextendr]
 pub fn re_expand_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REExpand> = <Vec<REExpand>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<REExpand> = <Vec<REExpand>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -321,7 +321,7 @@ pub fn re_expand_roundtrip_par(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn re_move_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REMove> = <Vec<REMove>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<REMove> = <Vec<REMove>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -356,7 +356,7 @@ pub fn re_move_align() -> SEXP {
 #[miniextendr]
 pub fn re_tracked_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RETracked> = <Vec<RETracked>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RETracked> = <Vec<RETracked>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -386,7 +386,7 @@ pub fn re_tracked_align() -> SEXP {
 #[miniextendr]
 pub fn re_tracked_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RETracked> = <Vec<RETracked>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<RETracked> = <Vec<RETracked>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -400,7 +400,7 @@ pub fn re_tracked_roundtrip_par(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn re_loc_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RELoc> = <Vec<RELoc>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<RELoc> = <Vec<RELoc>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -430,7 +430,7 @@ pub fn re_loc_align() -> SEXP {
 #[miniextendr]
 pub fn re_loc_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<RELoc> = <Vec<RELoc>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<RELoc> = <Vec<RELoc>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -444,7 +444,7 @@ pub fn re_loc_roundtrip_par(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn re_map_b_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REMapB> = <Vec<REMapB>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<REMapB> = <Vec<REMapB>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -482,7 +482,7 @@ pub fn re_map_b_align() -> SEXP {
 #[miniextendr]
 pub fn re_map_b_roundtrip_par(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<REMapB> = <Vec<REMapB>>::from_dataframe_par(&frame).unwrap();
+    let rows: Vec<REMapB> = <Vec<REMapB>>::from_dataframe_par(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -518,7 +518,7 @@ pub fn re_map_h_roundtrip_ok() -> bool {
         },
     ];
     let df = rows.clone().into_dataframe().unwrap();
-    let back: Vec<REMapH> = <Vec<REMapH>>::from_dataframe(&df).unwrap();
+    let back: Vec<REMapH> = <Vec<REMapH>>::from_dataframe(*df).unwrap();
     back == rows
 }
 
@@ -552,7 +552,7 @@ pub fn re_qualified_roundtrip_ok() -> bool {
         },
     ];
     let df = rows.clone().into_dataframe().unwrap();
-    let back: Vec<REQualified> = <Vec<REQualified>>::from_dataframe(&df).unwrap();
+    let back: Vec<REQualified> = <Vec<REQualified>>::from_dataframe(*df).unwrap();
     back == rows
 }
 

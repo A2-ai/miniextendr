@@ -89,7 +89,7 @@ impl GenericSlots<i32> for SlotHost {
 #[test]
 fn ordinary_handles_can_call_the_same_trait_functions() {
     r_test_utils::with_r_thread(|| {
-        let mut ptr = ExternalPtr::new(host());
+        let ptr = ExternalPtr::new(host());
         assert_eq!(SlotProbe::read(ptr.borrow()), [3, 5, 8]);
         SlotProbe::write(ptr.borrow_mut(), vec![13, 21]);
         assert_eq!(SlotHost::keys(&ptr), [13, 21]);

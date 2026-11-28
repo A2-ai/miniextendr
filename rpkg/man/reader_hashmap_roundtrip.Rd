@@ -10,7 +10,7 @@ reader_hashmap_roundtrip(df)
 \item{df}{data.frame with \code{label} (character) and \code{weights} (list of named lists of doubles).}
 }
 \description{
-\verb{Vec::<RHashMapRow>::from_dataframe(&df)} → rebuild. Columns \code{label},
+\verb{Vec::<RHashMapRow>::from_dataframe(df)} → rebuild. Columns \code{label},
 \code{weights} (list of named lists). HashMap key order is non-deterministic —
 R-side assertions must sort by name.
 }

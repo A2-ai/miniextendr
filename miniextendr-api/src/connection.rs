@@ -1382,7 +1382,11 @@ impl RStdin {
     /// If an [`RStdinLock`] is already alive on this thread ("RStdin is
     /// already locked on this thread"). That includes reading through
     /// another `RStdin` handle while a lock is held.
-    pub fn lock(&self) -> RStdinLock {
+    #[expect(
+        clippy::unused_self,
+        reason = "called on a handle like std::io::Stdin::lock; the lock is per thread"
+    )]
+    pub fn lock(self) -> RStdinLock {
         let line = STDIN_LINE
             .with(std::cell::Cell::take)
             .expect("RStdin is already locked on this thread");
@@ -1399,7 +1403,7 @@ impl RStdin {
     /// # Panics
     ///
     /// Like [`lock`](Self::lock).
-    pub fn read_line(&self, buf: &mut String) -> std::io::Result<usize> {
+    pub fn read_line(self, buf: &mut String) -> std::io::Result<usize> {
         std::io::BufRead::read_line(&mut self.lock(), buf)
     }
 

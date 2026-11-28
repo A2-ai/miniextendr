@@ -68,7 +68,7 @@ impl LifecycleStage {
     /// Returns an R inline code expression like `` `r lifecycle::badge("experimental")` ``
     /// that roxygen2 evaluates to render a colored badge. Returns `None` for `Stable`
     /// (no badge needed).
-    pub fn badge(&self) -> Option<&'static str> {
+    pub fn badge(self) -> Option<&'static str> {
         match self {
             Self::Experimental => Some(r#"`r lifecycle::badge("experimental")`"#),
             Self::Stable => None, // No badge for stable
@@ -85,7 +85,7 @@ impl LifecycleStage {
     /// Returns the R function to call at the start of the wrapper body to emit
     /// the lifecycle signal (e.g., `"lifecycle::deprecate_warn"`). Returns `None`
     /// for `Stable` (no signal needed).
-    pub fn signal_fn(&self) -> Option<&'static str> {
+    pub fn signal_fn(self) -> Option<&'static str> {
         match self {
             Self::Experimental => Some("lifecycle::signal_stage"),
             Self::Stable => None,
@@ -99,7 +99,7 @@ impl LifecycleStage {
     /// Get the bare R function name for `@importFrom lifecycle` roxygen tag.
     ///
     /// Returns the function name without the `lifecycle::` prefix.
-    pub fn import_from_fn(&self) -> Option<&'static str> {
+    pub fn import_from_fn(self) -> Option<&'static str> {
         match self {
             Self::Experimental | Self::Superseded => Some("signal_stage"),
             Self::Stable => None,
@@ -113,7 +113,7 @@ impl LifecycleStage {
     ///
     /// Only `Experimental` adds `@keywords internal` to keep the function
     /// off the main package index. Returns `None` for all other stages.
-    pub fn keywords(&self) -> Option<&'static str> {
+    pub fn keywords(self) -> Option<&'static str> {
         match self {
             Self::Experimental => Some("internal"),
             Self::Stable => None,

@@ -17,7 +17,10 @@ pub fn dispatch(cmd: &WorkflowCmd, ctx: &ProjectContext, quiet: bool) -> Result<
             args: _,
         } => workflow_check(ctx, error_on, check_dir.as_deref(), quiet),
         WorkflowCmd::Test { filter } => workflow_test(ctx, filter.as_deref(), quiet),
-        WorkflowCmd::Doctor => workflow_doctor(ctx, quiet),
+        WorkflowCmd::Doctor => {
+            workflow_doctor(ctx, quiet);
+            Ok(())
+        }
         WorkflowCmd::Upgrade => workflow_upgrade(ctx, quiet),
         WorkflowCmd::CheckRust => workflow_check_rust(quiet),
         WorkflowCmd::Sync => workflow_sync(ctx, quiet),
@@ -139,7 +142,7 @@ fn workflow_test(ctx: &ProjectContext, filter: Option<&str>, quiet: bool) -> Res
 }
 
 /// Native — comprehensive project health check.
-fn workflow_doctor(ctx: &ProjectContext, quiet: bool) -> Result<()> {
+fn workflow_doctor(ctx: &ProjectContext, quiet: bool) {
     let root = &ctx.root;
 
     if !quiet {
@@ -298,8 +301,6 @@ fn workflow_doctor(ctx: &ProjectContext, quiet: bool) -> Result<()> {
     if fail > 0 {
         std::process::exit(1);
     }
-
-    Ok(())
 }
 
 /// Upgrade the scaffold files and metadata through the canonical R helper.

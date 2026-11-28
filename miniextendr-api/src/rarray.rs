@@ -371,7 +371,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// Panics if any index is out of bounds, or if an ALTREP reader raises
     /// an R error in a standalone Rust embedding.
     #[inline]
-    pub unsafe fn get(&self, indices: [usize; NDIM]) -> T
+    pub unsafe fn get(self, indices: [usize; NDIM]) -> T
     where
         T: Copy,
     {
@@ -429,7 +429,7 @@ impl<T: RNativeType> RMatrix<T> {
     ///
     /// The SEXP must be valid.
     #[inline]
-    pub unsafe fn nrow(&self) -> usize {
+    pub unsafe fn nrow(self) -> usize {
         unsafe { self.dim(0) }
     }
 
@@ -439,7 +439,7 @@ impl<T: RNativeType> RMatrix<T> {
     ///
     /// The SEXP must be valid.
     #[inline]
-    pub unsafe fn ncol(&self) -> usize {
+    pub unsafe fn ncol(self) -> usize {
         unsafe { self.dim(1) }
     }
 
@@ -450,7 +450,7 @@ impl<T: RNativeType> RMatrix<T> {
     /// The main-thread, rooting, and validity requirements of [`Self::get`]
     /// apply.
     #[inline]
-    pub unsafe fn get_rc(&self, row: usize, col: usize) -> T
+    pub unsafe fn get_rc(self, row: usize, col: usize) -> T
     where
         T: Copy,
     {
@@ -520,7 +520,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     /// - The SEXP must be valid.
     /// - `what` must be a valid symbol SEXP.
     #[inline]
-    fn get_attr_opt(&self, name: SEXP) -> Option<SEXP> {
+    fn get_attr_opt(self, name: SEXP) -> Option<SEXP> {
         let attr = self.sexp.get_attr(name);
         if attr.is_nil() { None } else { Some(attr) }
     }
@@ -533,7 +533,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// The SEXP must be valid.
     #[inline]
-    pub unsafe fn get_names(&self) -> Option<SEXP> {
+    pub unsafe fn get_names(self) -> Option<SEXP> {
         // Safety: R_NamesSymbol is a known symbol
         self.get_attr_opt(SEXP::names_symbol())
     }
@@ -546,7 +546,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// The SEXP must be valid.
     #[inline]
-    pub unsafe fn get_class(&self) -> Option<SEXP> {
+    pub unsafe fn get_class(self) -> Option<SEXP> {
         // Safety: R_ClassSymbol is a known symbol
         self.get_attr_opt(SEXP::class_symbol())
     }
@@ -559,7 +559,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// The SEXP must be valid.
     #[inline]
-    pub unsafe fn get_dimnames(&self) -> Option<SEXP> {
+    pub unsafe fn get_dimnames(self) -> Option<SEXP> {
         // Safety: R_DimNamesSymbol is a known symbol
         self.get_attr_opt(SEXP::dimnames_symbol())
     }
@@ -572,7 +572,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// The SEXP must be valid.
     #[inline]
-    pub unsafe fn get_rownames(&self) -> Option<SEXP> {
+    pub unsafe fn get_rownames(self) -> Option<SEXP> {
         unsafe {
             let dimnames = self.sexp.get_dimnames();
             if dimnames.is_nil() {
@@ -595,7 +595,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     ///
     /// The SEXP must be valid.
     #[inline]
-    pub unsafe fn get_colnames(&self) -> Option<SEXP> {
+    pub unsafe fn get_colnames(self) -> Option<SEXP> {
         unsafe {
             let dimnames = self.sexp.get_dimnames();
             if dimnames.is_nil() {

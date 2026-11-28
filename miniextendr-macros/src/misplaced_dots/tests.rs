@@ -1,5 +1,9 @@
 use super::*;
 
+#[expect(
+    clippy::option_option,
+    reason = "outer: whether misplaced dots were found; inner: their binding name"
+)]
 fn name_of(src: &str) -> Option<Option<String>> {
     find(src.parse().unwrap()).map(|found| found.name)
 }

@@ -1,6 +1,6 @@
 //! End-to-end fixtures for the unified DataFrame surface: the public verbs
 //! [`IntoDataFrame::into_dataframe`] (`rows.into_dataframe()?`) and
-//! [`FromDataFrame::from_dataframe`] (`Vec::<Row>::from_dataframe(&df)?`), which
+//! [`FromDataFrame::from_dataframe`] (`Vec::<Row>::from_dataframe(df)?`), which
 //! `#[derive(DataFrameRow)]` wires up via the local `DataFrameRowConvert` marker
 //! and the `miniextendr_api` blanket impls (orphan-rule bridge).
 //!
@@ -29,7 +29,7 @@ pub struct UnifiedPoint {
 #[miniextendr]
 pub fn unified_roundtrip(df: SEXP) -> SEXP {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<UnifiedPoint> = <Vec<UnifiedPoint>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<UnifiedPoint> = <Vec<UnifiedPoint>>::from_dataframe(frame).unwrap();
     rows.into_dataframe().unwrap().into_sexp()
 }
 
@@ -41,7 +41,7 @@ pub fn unified_roundtrip(df: SEXP) -> SEXP {
 #[miniextendr]
 pub fn unified_roundtrip_count(df: SEXP) -> i32 {
     let frame = DataFrame::from_sexp(df).unwrap();
-    let rows: Vec<UnifiedPoint> = <Vec<UnifiedPoint>>::from_dataframe(&frame).unwrap();
+    let rows: Vec<UnifiedPoint> = <Vec<UnifiedPoint>>::from_dataframe(frame).unwrap();
     rows.len() as i32
 }
 
@@ -63,7 +63,7 @@ pub fn gc_stress_unified_dataframe() {
         })
         .collect();
     let df = rows.clone().into_dataframe().unwrap();
-    let _back: Vec<UnifiedPoint> = <Vec<UnifiedPoint>>::from_dataframe(&df).unwrap();
+    let _back: Vec<UnifiedPoint> = <Vec<UnifiedPoint>>::from_dataframe(*df).unwrap();
     // Hold `df` (the assembled SEXP) live past the read-back allocation.
     let _ = df;
 }

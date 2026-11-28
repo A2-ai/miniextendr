@@ -130,7 +130,7 @@ where
     // STRSXP and recycle the slot. See reviews/2026-05-29-serde-deserialize-fixture-gctorture-input-protect.md.
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    deserialize_rows(&view, EnumReadConfig::default())
+    deserialize_rows(view, EnumReadConfig::default())
 }
 
 /// Pass a slice of deserialized rows to a scoped callback.
@@ -169,7 +169,7 @@ where
     // Root the input across deserialisation — see [`dataframe_to_vec`].
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    let rows: Vec<T> = deserialize_rows(&view, EnumReadConfig::default())?;
+    let rows: Vec<T> = deserialize_rows(view, EnumReadConfig::default())?;
     Ok(f(&rows))
 }
 
@@ -209,7 +209,7 @@ where
     // Root the input across deserialisation — see [`dataframe_to_vec`].
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    deserialize_rows(&view, EnumReadConfig::from_top_level_tag(tag_column))
+    deserialize_rows(view, EnumReadConfig::from_top_level_tag(tag_column))
 }
 
 /// Convert a data.frame with *flattened enum fields* into `Vec<T>`, honouring
@@ -259,7 +259,7 @@ where
     // Root the input across deserialisation — see [`dataframe_to_vec`].
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    deserialize_rows(&view, EnumReadConfig::from_field_tags(tags))
+    deserialize_rows(view, EnumReadConfig::from_field_tags(tags))
 }
 
 /// Convert a data.frame into `Vec<T>`, declaring `fields` that must always be
@@ -336,7 +336,7 @@ where
     // Root the input across deserialisation — see [`dataframe_to_vec`].
     let _input = unsafe { OwnedProtect::new(sexp) };
     let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-    deserialize_rows(&view, EnumReadConfig::from_struct_fields(fields))
+    deserialize_rows(view, EnumReadConfig::from_struct_fields(fields))
 }
 
 // endregion
@@ -397,7 +397,7 @@ where
         // `sexp` for the returned handle (keeps the `UNPROTECT(1)` order correct).
         let _input = unsafe { OwnedProtect::new(sexp) };
         let view = DataFrame::from_sexp(sexp).map_err(|e| RSerdeError::Message(e.to_string()))?;
-        deserialize_rows(&view, EnumReadConfig::default())?
+        deserialize_rows(view, EnumReadConfig::default())?
     };
     // SAFETY:
     // - Caller is on the R main thread (entry via #[miniextendr] wrapper).
@@ -445,7 +445,7 @@ where
     T: for<'de> serde::Deserialize<'de>,
 {
     fn from_dataframe(
-        df: &crate::dataframe::DataFrame,
+        df: crate::dataframe::DataFrame,
     ) -> Result<Self, crate::dataframe::DataFrameError> {
         Ok(SerdeRows(dataframe_to_vec(df.as_sexp())?))
     }
@@ -569,7 +569,7 @@ struct RowDeserializer<'sexp> {
 
 impl<'sexp> RowDeserializer<'sexp> {
     fn new(view: &'sexp DataFrame, row: usize, cfg: EnumReadConfig) -> Self {
-        let column_names = ordered_column_names(view);
+        let column_names = ordered_column_names(*view);
         Self {
             view,
             row,
@@ -631,7 +631,7 @@ impl<'de> Deserializer<'de> for RowDeserializer<'de> {
                     .into(),
             ));
         };
-        let variant = read_tag_variant(self.view, self.row, &tag_col)?;
+        let variant = read_tag_variant(*self.view, self.row, &tag_col)?;
         visitor.visit_enum(DfEnumAccess {
             view: self.view,
             row: self.row,
@@ -654,7 +654,7 @@ impl<'de> Deserializer<'de> for RowDeserializer<'de> {
 /// `DataFrame::names()` is HashMap-backed and unordered, but nested
 /// prefix matching needs deterministic enumeration that matches what
 /// `vec_to_dataframe`'s columnar serializer emits.
-fn ordered_column_names(view: &DataFrame) -> std::rc::Rc<[String]> {
+fn ordered_column_names(view: DataFrame) -> std::rc::Rc<[String]> {
     let list = view.as_list();
     let Some(names_sexp) = list.names() else {
         return std::rc::Rc::from(Vec::<String>::new().into_boxed_slice());
@@ -886,7 +886,7 @@ impl<'de> Deserializer<'de> for MaybeNestedDeserializer<'de> {
         visitor: V,
     ) -> Result<V::Value, Self::Error> {
         let tag_col_name = self.tag_column_name();
-        let variant = read_tag_variant(self.view, self.row, &tag_col_name)?;
+        let variant = read_tag_variant(*self.view, self.row, &tag_col_name)?;
         visitor.visit_enum(DfEnumAccess {
             view: self.view,
             row: self.row,
@@ -1406,7 +1406,7 @@ impl<'de> Deserializer<'de> for CellDeserializer<'de, '_> {
 /// serde variant name (PascalCase by default). Errors if the column is absent
 /// (naming the expected column), NA (a required enum with no variant), or not
 /// a character/factor column.
-fn read_tag_variant(view: &DataFrame, row: usize, tag_col: &str) -> Result<String, RSerdeError> {
+fn read_tag_variant(view: DataFrame, row: usize, tag_col: &str) -> Result<String, RSerdeError> {
     let col = view.column_raw(tag_col).ok_or_else(|| {
         RSerdeError::Message(format!(
             "enum reader: expected variant-tag column {:?} not found in data.frame (columns: {:?})",
@@ -1632,21 +1632,18 @@ impl<'de> SeqAccess<'de> for EnumTupleSeqAccess<'de> {
 
 /// Per-row deserialisation loop shared by all three public entry points.
 ///
-/// Borrows `view` for the duration of deserialisation; the HRTB constraint
-/// (`T: for<'de> Deserialize<'de>`) lets the call site pick `'de = 'sexp`
-/// internally — visitors that want `&'sexp str` see a borrow rooted in the
-/// SEXP, `DeserializeOwned` visitors copy via serde's default fallback.
-fn deserialize_rows<'sexp, T>(
-    view: &'sexp DataFrame,
-    cfg: EnumReadConfig,
-) -> Result<Vec<T>, RSerdeError>
+/// Lends `view` (a `Copy` handle) to each row's deserializer; the HRTB
+/// constraint (`T: for<'de> Deserialize<'de>`) lets each row pick `'de` as
+/// that borrow, so visitors that want `&str` see a borrow of the SEXP's data
+/// and `DeserializeOwned` visitors copy via serde's default fallback.
+fn deserialize_rows<T>(view: DataFrame, cfg: EnumReadConfig) -> Result<Vec<T>, RSerdeError>
 where
     T: for<'de> serde::Deserialize<'de>,
 {
     let nrow = view.nrow();
     let mut rows: Vec<T> = Vec::with_capacity(nrow);
     for i in 0..nrow {
-        let de = RowDeserializer::new(view, i, cfg.clone());
+        let de = RowDeserializer::new(&view, i, cfg.clone());
         rows.push(T::deserialize(de)?);
     }
     Ok(rows)

@@ -21,7 +21,7 @@
 //! let df = rows.into_dataframe_par()?;      // parallel (feature = "rayon")
 //!
 //! // R → Rust
-//! let rows: Vec<Row> = Vec::<Row>::from_dataframe(&df)?;
+//! let rows: Vec<Row> = Vec::<Row>::from_dataframe(df)?;
 //! ```
 //!
 //! `DataFrame` implements `TryFromSexp` and `IntoR`, so caller-rooted views slot
@@ -392,7 +392,7 @@ impl DataFrame {
     /// this return `Option`), so `T::Error` is unconstrained; use
     /// [`column_raw`](Self::column_raw) when you need the error.
     #[inline]
-    pub fn column<T>(&self, name: &str) -> Option<T>
+    pub fn column<T>(self, name: &str) -> Option<T>
     where
         T: TryFromSexp,
     {
@@ -404,7 +404,7 @@ impl DataFrame {
     /// As with [`column`](Self::column), `T` may be a vector/collection or a
     /// scalar target type; the conversion error is discarded.
     #[inline]
-    pub fn column_index<T>(&self, idx: usize) -> Option<T>
+    pub fn column_index<T>(self, idx: usize) -> Option<T>
     where
         T: TryFromSexp,
     {
@@ -414,19 +414,19 @@ impl DataFrame {
 
     /// Get the raw SEXP for a column by name.
     #[inline]
-    pub fn column_raw(&self, name: &str) -> Option<SEXP> {
+    pub fn column_raw(self, name: &str) -> Option<SEXP> {
         self.named_list().get_raw(name)
     }
 
     /// Number of rows.
     #[inline]
-    pub fn nrow(&self) -> usize {
+    pub fn nrow(self) -> usize {
         extract_nrow(self.sexp).unwrap_or(0)
     }
 
     /// Number of columns.
     #[inline]
-    pub fn ncol(&self) -> usize {
+    pub fn ncol(self) -> usize {
         self.sexp.len()
     }
 
@@ -441,7 +441,7 @@ impl DataFrame {
     /// (elements 2, 4)`). Refuse the frame with it rather than defaulting it
     /// away: `unwrap_or_default()` would read a frame with one such name as a
     /// frame with no names, and shift every other name off its column.
-    pub fn names(&self) -> Result<Vec<String>, SexpError> {
+    pub fn names(self) -> Result<Vec<String>, SexpError> {
         let names_sexp = self.sexp.get_names();
         if names_sexp.is_nil() {
             return Ok(Vec::new());
@@ -452,12 +452,12 @@ impl DataFrame {
 
     /// Check whether a column name exists.
     #[inline]
-    pub fn contains_column(&self, name: &str) -> bool {
+    pub fn contains_column(self, name: &str) -> bool {
         self.named_list().contains(name)
     }
 
     /// Validate the data frame's column types against a [`TypedListSpec`].
-    pub fn validate(&self, spec: &TypedListSpec) -> Result<TypedList, TypedListError> {
+    pub fn validate(self, spec: &TypedListSpec) -> Result<TypedList, TypedListError> {
         validate_list(unsafe { List::from_raw(self.sexp) }, spec)
     }
     // endregion
@@ -466,19 +466,19 @@ impl DataFrame {
 
     /// Get the underlying [`List`].
     #[inline]
-    pub fn as_list(&self) -> List {
+    pub fn as_list(self) -> List {
         unsafe { List::from_raw(self.sexp) }
     }
 
     /// Get the underlying SEXP.
     #[inline]
-    pub fn as_sexp(&self) -> SEXP {
+    pub fn as_sexp(self) -> SEXP {
         self.sexp
     }
 
     /// Build the `NamedList` index for O(1) column-by-name access.
     #[inline]
-    fn named_list(&self) -> NamedList {
+    fn named_list(self) -> NamedList {
         NamedList::new(unsafe { List::from_raw(self.sexp) })
             .expect("DataFrame always carries a names attribute")
     }
@@ -705,7 +705,7 @@ impl DataFrame {
     /// Returns an owned, GC-rooted [`BuiltDataFrame`] — see
     /// [`drop`](Self::drop)'s rooting note (#1247).
     #[must_use]
-    pub fn select_rows(&self, idx: &[usize]) -> BuiltDataFrame {
+    pub fn select_rows(self, idx: &[usize]) -> BuiltDataFrame {
         unsafe {
             let out = select_frame_rows(self.sexp, idx);
             // Root before the guard drops (see `drop` for the ordering argument).
@@ -1437,11 +1437,11 @@ pub trait IntoDataFrame: Sized {
 /// sequential reader; the derive overrides it with the #765 off-main-thread row assembly.
 pub trait FromDataFrame: Sized {
     /// Read rows back out of a [`DataFrame`].
-    fn from_dataframe(df: &DataFrame) -> Result<Self, DataFrameError>;
+    fn from_dataframe(df: DataFrame) -> Result<Self, DataFrameError>;
 
     /// Parallel row read (`feature = "rayon"`). Same result as `from_dataframe()`.
     #[cfg(feature = "rayon")]
-    fn from_dataframe_par(df: &DataFrame) -> Result<Self, DataFrameError> {
+    fn from_dataframe_par(df: DataFrame) -> Result<Self, DataFrameError> {
         Self::from_dataframe(df)
     }
 }
@@ -1778,7 +1778,7 @@ macro_rules! __dataframe_row_when_rayon {
 /// `#[doc(hidden)]` trait on the local `Row` type (legal — `Row` is local), and `miniextendr_api`
 /// carries the blanket [`IntoDataFrame`] / [`FromDataFrame`] impls for `Vec<T: DataFrameRowConvert>`
 /// below (legal — `IntoDataFrame` is local *here*). Users still call the public
-/// `rows.into_dataframe()?` / `Vec::<Row>::from_dataframe(&df)?` verbs.
+/// `rows.into_dataframe()?` / `Vec::<Row>::from_dataframe(df)?` verbs.
 #[doc(hidden)]
 pub trait DataFrameRowConvert: Sized {
     /// Build a [`DataFrame`] from a row vector (sequential).
@@ -1794,13 +1794,13 @@ pub trait DataFrameRowConvert: Sized {
     /// (scalar, column-expansion, and struct-flatten struct shapes do; tagged enum shapes with
     /// reader-capable fields do too; tagless/map-column/coerced/skip/`as_list` enum shapes and
     /// opaque-map shapes do not); the blanket surfaces that as a clear error.
-    fn rows_from_dataframe(_df: &DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
+    fn rows_from_dataframe(_df: DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
         None
     }
 
     /// Parallel reader (defaults to the sequential reader).
     #[cfg(feature = "rayon")]
-    fn rows_from_dataframe_par(df: &DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
+    fn rows_from_dataframe_par(df: DataFrame) -> Option<Result<Vec<Self>, DataFrameError>> {
         Self::rows_from_dataframe(df)
     }
 }
@@ -1832,17 +1832,16 @@ impl<T: DataFrameRowConvert> IntoDataFrame for Vec<T> {
 }
 
 impl<T: DataFrameRowConvert> FromDataFrame for Vec<T> {
-    fn from_dataframe(df: &DataFrame) -> Result<Self, DataFrameError> {
+    fn from_dataframe(df: DataFrame) -> Result<Self, DataFrameError> {
         // No input root here: an R-supplied frame is rooted by R's `.Call`
-        // argument frame, and a Rust-built frame now reaches the reader as a
-        // borrowed `BuiltDataFrame` (rooted for the borrow) — the handle
-        // supersedes the old `OwnedProtect` guard (#1128). The reader's own
+        // argument frame, and a Rust-built frame is rooted by the caller's
+        // `BuiltDataFrame`, which outlives the call (#1128). The reader's own
         // sub-frame allocations stay protected by their internal guards.
         T::rows_from_dataframe(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 
     #[cfg(feature = "rayon")]
-    fn from_dataframe_par(df: &DataFrame) -> Result<Self, DataFrameError> {
+    fn from_dataframe_par(df: DataFrame) -> Result<Self, DataFrameError> {
         T::rows_from_dataframe_par(df).unwrap_or_else(|| Err(no_reader_error()))
     }
 }
@@ -1985,8 +1984,8 @@ impl List {
     /// # Errors
     ///
     /// Returns [`DataFrameError`] if the list has no names or columns differ in length.
-    pub fn as_data_frame(&self) -> Result<BuiltDataFrame, DataFrameError> {
-        let named = NamedList::new(*self).ok_or(DataFrameError::NoNames)?;
+    pub fn as_data_frame(self) -> Result<BuiltDataFrame, DataFrameError> {
+        let named = NamedList::new(self).ok_or(DataFrameError::NoNames)?;
         named.as_data_frame()
     }
 }

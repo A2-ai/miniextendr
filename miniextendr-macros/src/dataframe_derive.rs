@@ -1297,7 +1297,7 @@ fn resolve_struct_field(
 ///
 /// - Rows → R `data.frame`: `rows.into_dataframe()?` (`/_par`) or
 ///   `rows.wrap_data_frame()`, from `IntoDataFrame` / `AsDataFrameExt`.
-/// - R `data.frame` → rows: `Vec::<Row>::from_dataframe(&df)?` (`/_par`) from
+/// - R `data.frame` → rows: `Vec::<Row>::from_dataframe(df)?` (`/_par`) from
 ///   `FromDataFrame`, or the one-call `Row::try_from_dataframe(sexp)` reader.
 /// - Rows ↔ the pure-Rust columnar companion: the `ColumnarFrame` trait
 ///   (`<Row>DataFrame::from_rows` / `from_rows_par` / `into_rows`), or the `std`
@@ -3467,7 +3467,7 @@ fn derive_struct_dataframe(
                             // the sub-frame stays rooted across the CHARSXP
                             // allocations and the recursive read below.
                             let __sub = __view.select(&__sel).strip_prefix(__prefix);
-                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(&__sub) {
+                            let __out = match <#inner_ty as ::miniextendr_api::dataframe::DataFrameRowConvert>::rows_from_dataframe(*__sub) {
                                 ::core::option::Option::Some(::core::result::Result::Ok(__v)) => __v,
                                 ::core::option::Option::Some(::core::result::Result::Err(__e)) => {
                                     return ::core::result::Result::Err(::std::format!(
@@ -3619,7 +3619,7 @@ fn derive_struct_dataframe(
             ///
             /// This is the one-call `SEXP → Vec<Self>` reader; the same conversion is also
             /// reachable via the boundary-crossing [`FromDataFrame`] trait as
-            /// `Vec::<Self>::from_dataframe(&df)`.
+            /// `Vec::<Self>::from_dataframe(df)`.
             ///
             /// [`FromDataFrame`]: ::miniextendr_api::dataframe::FromDataFrame
             pub fn try_from_dataframe(
@@ -3749,7 +3749,7 @@ fn derive_struct_dataframe(
     // only *covered* inside `Vec<_>`). Instead it implements the local `DataFrameRowConvert`
     // marker on the local `Row`; miniextendr_api's blanket
     // `impl<T: DataFrameRowConvert> IntoDataFrame/FromDataFrame for Vec<T>` then gives users the
-    // public verbs `rows.into_dataframe()?` / `Vec::<Row>::from_dataframe(&df)?`. The methods
+    // public verbs `rows.into_dataframe()?` / `Vec::<Row>::from_dataframe(df)?`. The methods
     // delegate to the companion engine (`to_dataframe` → `ColumnSource::into_dataframe`), the
     // merged parallel builder (#777 `from_rows_par`) and reader (#765 `try_from_dataframe[_par]`),
     // converting the reader's bare `String` error into the unified `DataFrameError`.
@@ -3776,7 +3776,7 @@ fn derive_struct_dataframe(
     let reader_overrides = if struct_reader {
         quote! {
             fn rows_from_dataframe(
-                df: &::miniextendr_api::dataframe::DataFrame,
+                df: ::miniextendr_api::dataframe::DataFrame,
             ) -> ::core::option::Option<::core::result::Result<
                 ::std::vec::Vec<Self>,
                 ::miniextendr_api::dataframe::DataFrameError,
@@ -3789,7 +3789,7 @@ fn derive_struct_dataframe(
 
             ::miniextendr_api::__dataframe_row_when_rayon! {
                 fn rows_from_dataframe_par(
-                    df: &::miniextendr_api::dataframe::DataFrame,
+                    df: ::miniextendr_api::dataframe::DataFrame,
                 ) -> ::core::option::Option<::core::result::Result<
                     ::std::vec::Vec<Self>,
                     ::miniextendr_api::dataframe::DataFrameError,

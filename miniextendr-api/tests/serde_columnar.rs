@@ -466,7 +466,7 @@ fn split_collated_empty_input_errors() {
 // region: vec_to_dataframe_flatten_enums (#1056)
 
 /// The ordered column names of a data.frame SEXP.
-fn col_names(sexp: &miniextendr_api::SEXP) -> Vec<String> {
+fn col_names(sexp: miniextendr_api::SEXP) -> Vec<String> {
     let names = sexp.get_names();
     (0..names.xlength())
         .map(|i| names.string_elt_str(i).unwrap_or("<NA>").to_string())
@@ -474,7 +474,7 @@ fn col_names(sexp: &miniextendr_api::SEXP) -> Vec<String> {
 }
 
 /// The column SEXP for `name`, or panic.
-fn col(sexp: &miniextendr_api::SEXP, name: &str) -> miniextendr_api::SEXP {
+fn col(sexp: miniextendr_api::SEXP, name: &str) -> miniextendr_api::SEXP {
     let names = sexp.get_names();
     for i in 0..names.xlength() {
         if names.string_elt_str(i) == Some(name) {
@@ -518,7 +518,7 @@ fn flatten_enum_field_externally_tagged_two_variants() {
         ];
         let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
         let sexp = df.into_sexp();
-        let names = col_names(&sexp);
+        let names = col_names(sexp);
         // id, action_variant, then the union of Add (file, weight) + Init (path).
         assert_eq!(names[0], "id", "scalar field stays first");
         assert!(
@@ -530,15 +530,15 @@ fn flatten_enum_field_externally_tagged_two_variants() {
         assert!(names.contains(&"action_path".to_string()), "{names:?}");
 
         // Tag values.
-        let variant = col(&sexp, "action_variant");
+        let variant = col(sexp, "action_variant");
         assert_eq!(variant.string_elt_str(0), Some("Add"));
         assert_eq!(variant.string_elt_str(1), Some("Init"));
 
         // Row 0 (Add) has file=10, weight=2.5, path=NA.
-        let file = col(&sexp, "action_file");
+        let file = col(sexp, "action_file");
         assert_eq!(file.real_elt(0), 10.0);
         assert!(file.real_elt(1).is_nan(), "Init row file should be NA");
-        let path = col(&sexp, "action_path");
+        let path = col(sexp, "action_path");
         assert_eq!(path.string_elt_str(0), None, "Add row path should be NA");
         assert_eq!(path.string_elt_str(1), Some("/tmp"));
     });
@@ -572,10 +572,10 @@ fn flatten_enum_field_unit_variant_mixed() {
         ];
         let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
         let sexp = df.into_sexp();
-        let variant = col(&sexp, "action_variant");
+        let variant = col(sexp, "action_variant");
         assert_eq!(variant.string_elt_str(0), Some("Set"));
         assert_eq!(variant.string_elt_str(1), Some("Reset"));
-        let value = col(&sexp, "action_value");
+        let value = col(sexp, "action_value");
         assert_eq!(value.real_elt(0), 7.0);
         assert!(
             value.real_elt(1).is_nan(),
@@ -611,10 +611,10 @@ fn flatten_enum_field_option_none() {
         ];
         let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
         let sexp = df.into_sexp();
-        let variant = col(&sexp, "action_variant");
+        let variant = col(sexp, "action_variant");
         assert_eq!(variant.string_elt_str(0), Some("Go"));
         assert_eq!(variant.string_elt_str(1), None, "None row tag should be NA");
-        let steps = col(&sexp, "action_steps");
+        let steps = col(sexp, "action_steps");
         assert_eq!(steps.real_elt(0), 3.0);
         assert!(steps.real_elt(1).is_nan(), "None row payload should be NA");
     });
@@ -652,11 +652,11 @@ fn flatten_enum_field_newtype_wrapping_struct() {
         ];
         let df = vec_to_dataframe_flatten_enums(&rows, &["shape"]).unwrap();
         let sexp = df.into_sexp();
-        let names = col_names(&sexp);
+        let names = col_names(sexp);
         assert!(names.contains(&"shape_variant".to_string()), "{names:?}");
         assert!(names.contains(&"shape_x".to_string()), "{names:?}");
         assert!(names.contains(&"shape_y".to_string()), "{names:?}");
-        let x = col(&sexp, "shape_x");
+        let x = col(sexp, "shape_x");
         assert_eq!(x.real_elt(0), 1.0);
         assert!(x.real_elt(1).is_nan(), "Empty row x should be NA");
     });
@@ -684,10 +684,10 @@ fn flatten_enum_field_untargeted_enum_stays_list_column() {
         // Empty target set: nothing flattened.
         let df = vec_to_dataframe_flatten_enums(&rows, &[]).unwrap();
         let sexp = df.into_sexp();
-        let names = col_names(&sexp);
+        let names = col_names(sexp);
         assert_eq!(names, vec!["id".to_string(), "action".to_string()]);
         // The untargeted enum is a Generic (list) column.
-        let action = col(&sexp, "action");
+        let action = col(sexp, "action");
         assert_eq!(
             action.type_of(),
             miniextendr_api::SEXPTYPE::VECSXP,
@@ -737,7 +737,7 @@ fn flatten_enum_field_nested_struct_unaffected() {
         // Untargeted: behaves exactly like vec_to_dataframe — meta_size/meta_ok.
         let df = vec_to_dataframe_flatten_enums(&rows, &[]).unwrap();
         let sexp = df.into_sexp();
-        let names = col_names(&sexp);
+        let names = col_names(sexp);
         assert_eq!(
             names,
             vec![
@@ -779,17 +779,17 @@ fn flatten_enum_field_internally_tagged_no_synthetic_variant() {
         ];
         let df = vec_to_dataframe_flatten_enums(&rows, &["action"]).unwrap();
         let sexp = df.into_sexp();
-        let names = col_names(&sexp);
+        let names = col_names(sexp);
         // The embedded tag becomes action_kind; no synthetic action_variant.
         assert!(names.contains(&"action_kind".to_string()), "{names:?}");
         assert!(
             !names.contains(&"action_variant".to_string()),
             "internally-tagged field must not synthesize a duplicate variant tag, got {names:?}"
         );
-        let kind = col(&sexp, "action_kind");
+        let kind = col(sexp, "action_kind");
         assert_eq!(kind.string_elt_str(0), Some("Add"));
         assert_eq!(kind.string_elt_str(1), Some("Reset"));
-        let file = col(&sexp, "action_file");
+        let file = col(sexp, "action_file");
         assert_eq!(file.real_elt(0), 2.0);
         assert!(file.real_elt(1).is_nan(), "Reset row file should be NA");
     });
@@ -1147,7 +1147,7 @@ fn flatten_enum_reader_custom_tag_name_roundtrip() {
         let df = vec_to_dataframe_flatten_enums_with_tags(&rows, &["state"], &tags).unwrap();
         let sexp = df.as_sexp();
         // Writer emitted the custom tag column, not the default.
-        let names = col_names(&sexp);
+        let names = col_names(sexp);
         assert!(
             names.contains(&"state_tag".to_string()),
             "custom tag column present, got {names:?}"
@@ -1286,7 +1286,7 @@ fn flatten_enum_reader_tuple_variant_roundtrip() {
         let df = vec_to_dataframe_flatten_enums(&rows, &["m"]).unwrap();
         let sexp = df.as_sexp();
         // Pin the writer's tuple-payload column names before reading back.
-        let names = col_names(&sexp);
+        let names = col_names(sexp);
         assert!(names.contains(&"m_variant".to_string()), "{names:?}");
         assert!(names.contains(&"m__0".to_string()), "{names:?}");
         assert!(names.contains(&"m__1".to_string()), "{names:?}");
@@ -1340,15 +1340,15 @@ fn nested_field_omitted_by_first_row_gets_column() {
         let sexp = df.as_sexp();
         // The late field joins its siblings, ahead of later top-level keys.
         assert_eq!(
-            col_names(&sexp),
+            col_names(sexp),
             ["path", "metadata_hash", "metadata_message", "size"]
         );
-        let message = col(&sexp, "metadata_message");
+        let message = col(sexp, "metadata_message");
         assert_eq!(message.type_of(), miniextendr_api::SEXPTYPE::STRSXP);
         assert_eq!(message.string_elt_str(0), None, "row 1 lacks the field");
         assert_eq!(message.string_elt_str(1), Some("why"));
-        assert_eq!(col(&sexp, "metadata_hash").string_elt_str(1), Some("h2"));
-        assert_eq!(col(&sexp, "size").real_elt(1), 2.0);
+        assert_eq!(col(sexp, "metadata_hash").string_elt_str(1), Some("h2"));
+        assert_eq!(col(sexp, "size").real_elt(1), 2.0);
     });
 }
 
@@ -1399,14 +1399,14 @@ fn nested_field_omitted_two_levels_deep_gets_column() {
         let df = vec_to_dataframe(&rows).unwrap();
         let sexp = df.as_sexp();
         assert_eq!(
-            col_names(&sexp),
+            col_names(sexp),
             ["id", "outer_inner_value", "outer_inner_note", "outer_flag"]
         );
-        let note = col(&sexp, "outer_inner_note");
+        let note = col(sexp, "outer_inner_note");
         assert_eq!(note.type_of(), miniextendr_api::SEXPTYPE::STRSXP);
         assert_eq!(note.string_elt_str(0), None);
         assert_eq!(note.string_elt_str(1), Some("deep"));
-        assert_eq!(col(&sexp, "outer_inner_value").integer_elt(1), 20);
+        assert_eq!(col(sexp, "outer_inner_value").integer_elt(1), 20);
     });
 }
 
@@ -1437,8 +1437,8 @@ fn nested_field_only_in_last_row_gets_column() {
             .collect();
         let df = vec_to_dataframe(&rows).unwrap();
         let sexp = df.as_sexp();
-        assert_eq!(col_names(&sexp), ["id", "stats_n", "stats_mean"]);
-        let mean = col(&sexp, "stats_mean");
+        assert_eq!(col_names(sexp), ["id", "stats_n", "stats_mean"]);
+        let mean = col(sexp, "stats_mean");
         assert_eq!(mean.type_of(), miniextendr_api::SEXPTYPE::REALSXP);
         for i in 0..3 {
             assert!(mean.real_elt(i).is_nan(), "row {i} lacks `mean`");
@@ -1490,14 +1490,14 @@ fn nested_option_struct_none_in_first_row_flattens() {
         let df = vec_to_dataframe(&rows).unwrap();
         let sexp = df.as_sexp();
         assert_eq!(
-            col_names(&sexp),
+            col_names(sexp),
             ["id", "site_name", "site_location_lat", "site_location_lon"]
         );
-        let lat = col(&sexp, "site_location_lat");
+        let lat = col(sexp, "site_location_lat");
         assert_eq!(lat.type_of(), miniextendr_api::SEXPTYPE::REALSXP);
         assert!(lat.real_elt(0).is_nan(), "None row is NA");
         assert_eq!(lat.real_elt(1), 59.9);
-        assert!(col(&sexp, "site_location_lon").real_elt(0).is_nan());
+        assert!(col(sexp, "site_location_lon").real_elt(0).is_nan());
     });
 }
 
@@ -1536,7 +1536,7 @@ fn nested_option_scalar_none_first_is_typed_column() {
         ];
         let df = vec_to_dataframe(&rows).unwrap();
         let sexp = df.as_sexp();
-        let variant = col(&sexp, "meta_variant");
+        let variant = col(sexp, "meta_variant");
         assert_eq!(variant.type_of(), miniextendr_api::SEXPTYPE::STRSXP);
         assert_eq!(variant.string_elt_str(0), None);
         assert_eq!(variant.string_elt_str(1), Some("x"));
@@ -1592,8 +1592,8 @@ fn split_nested_field_omitted_by_first_row_gets_column() {
                 panic!("one variant gives a bare data.frame");
             };
             let sexp = df.as_sexp();
-            assert_eq!(col_names(&sexp), names);
-            let note = col(&sexp, "meta_note");
+            assert_eq!(col_names(sexp), names);
+            let note = col(sexp, "meta_note");
             assert_eq!(note.string_elt_str(0), None, "row 1 lacks the field");
             assert_eq!(note.string_elt_str(1), Some("why"));
         }

@@ -31,6 +31,11 @@ impl Reentrant {
     pub fn write(&mut self, value: i32) {
         self.value = value;
     }
+    #[expect(
+        clippy::unused_self,
+        clippy::needless_pass_by_ref_mut,
+        reason = "panics while the receiver is borrowed mutably, which is what the test unwinds through"
+    )]
     pub fn fail(&mut self) {
         panic!("intentional receiver unwind");
     }
@@ -277,9 +282,9 @@ fn trait_views_meet_the_producers_borrow() {
 fn handles_hold_the_borrow_until_dropped_or_unwound() {
     r_test_utils::with_r_thread(|| unsafe {
         let first = ExternalPtr::new(host());
-        let mut second = ExternalPtr::new(host());
+        let second = ExternalPtr::new(host());
         let alias = ExternalPtr::<Reentrant>::wrap_sexp(first.as_sexp()).unwrap();
-        let mut writer = ExternalPtr::<Reentrant>::wrap_sexp(first.as_sexp()).unwrap();
+        let writer = ExternalPtr::<Reentrant>::wrap_sexp(first.as_sexp()).unwrap();
         let read = first.borrow();
         let read_again = alias.borrow();
         let write_other = second.borrow_mut();
@@ -462,7 +467,7 @@ pub fn reentrant_take(obj: ExternalPtr<Reentrant>) -> i32 {
 
 /// A type-erased argument has no value of its own to borrow.
 #[miniextendr(noexport)]
-pub fn reentrant_erased_arg(mut obj: ExternalPtr<()>) -> bool {
+pub fn reentrant_erased_arg(obj: ExternalPtr<()>) -> bool {
     obj.downcast_mut::<Reentrant>().is_some()
 }
 
@@ -534,9 +539,9 @@ fn arguments_hold_their_objects_for_the_call() {
 #[test]
 fn borrow_checks_the_value_like_generated_code() {
     r_test_utils::with_r_thread(|| unsafe {
-        let mut owner = ExternalPtr::new(host());
+        let owner = ExternalPtr::new(host());
         let reader = ExternalPtr::<Reentrant>::wrap_sexp(owner.as_sexp()).unwrap();
-        let mut writer = ExternalPtr::<Reentrant>::wrap_sexp(owner.as_sexp()).unwrap();
+        let writer = ExternalPtr::<Reentrant>::wrap_sexp(owner.as_sexp()).unwrap();
         {
             let read = owner.borrow();
             let read_again = reader.borrow();

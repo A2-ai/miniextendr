@@ -54,7 +54,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
     use miniextendr_api::prelude::SEXP;
     unsafe {
         // Get mutable access via downcast_mut on erased pointer
-        let mut erased = ErasedExternalPtr::from_sexp(ptr);
+        let erased = ErasedExternalPtr::from_sexp(ptr);
         if let Some(mut counter) = erased.downcast_mut::<Counter>() {
             counter.value += 1;
             return SEXP::scalar_integer(counter.value);

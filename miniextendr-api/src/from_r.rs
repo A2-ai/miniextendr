@@ -590,7 +590,7 @@ impl SexpTypeError {
     /// A pairlist where a list was expected says how to fix it: `got
     /// pairlist, convert it with as.list()`. R's `is.list()` is `TRUE` for a
     /// pairlist, but a list conversion refuses one (#1866).
-    pub(crate) fn r_reason(&self, expected_known: bool) -> String {
+    pub(crate) fn r_reason(self, expected_known: bool) -> String {
         let got = crate::typed_list::sexptype_name(self.actual);
         let hint = if self.expected == SEXPTYPE::VECSXP && self.actual == SEXPTYPE::LISTSXP {
             ", convert it with as.list()"
@@ -1307,6 +1307,10 @@ pub type ElementCheck<'a> = dyn Fn(SEXP) -> Result<(), SexpError> + 'a;
 /// from when nothing encloses it. Not public API.
 #[doc(hidden)]
 #[inline]
+#[expect(
+    clippy::unnecessary_wraps,
+    reason = "an ElementCheck, whose signature returns a Result"
+)]
 pub fn no_element_check(_sexp: SEXP) -> Result<(), SexpError> {
     Ok(())
 }

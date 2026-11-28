@@ -201,13 +201,13 @@ impl ArenaState {
     /// `Some((false, index))` if the entry was found but count > 0 after
     /// decrement, `None` if the entry was not found.
     #[inline]
-    fn decrement_and_maybe_remove(&mut self, key: &usize) -> Option<(bool, usize)> {
+    fn decrement_and_maybe_remove(&mut self, key: usize) -> Option<(bool, usize)> {
         let map = self.map_mut();
-        if let Some(entry) = map.get_mut(key) {
+        if let Some(entry) = map.get_mut(&key) {
             entry.count -= 1;
             if entry.count == 0 {
                 let index = entry.index;
-                map.remove(key);
+                map.remove(&key);
                 Some((true, index))
             } else {
                 Some((false, entry.index))
@@ -256,7 +256,7 @@ impl ArenaState {
 
         let key = x.0 as usize;
 
-        match self.decrement_and_maybe_remove(&key) {
+        match self.decrement_and_maybe_remove(key) {
             Some((true, index)) => {
                 // Entry was removed (count reached 0)
                 self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());
@@ -285,7 +285,7 @@ impl ArenaState {
 
         let key = x.0 as usize;
 
-        match self.decrement_and_maybe_remove(&key) {
+        match self.decrement_and_maybe_remove(key) {
             Some((true, index)) => {
                 // Entry was removed (count reached 0)
                 self.backing.set_vector_elt(index as R_xlen_t, SEXP::nil());

@@ -11,6 +11,6 @@ with_int_map_roundtrip(df)
 and \code{tally_values} (list of double vectors).}
 }
 \description{
-\verb{Vec::<WithIntMap>::from_dataframe(&df)} → rebuild. Columns \code{id}, \code{tally_keys},
+\verb{Vec::<WithIntMap>::from_dataframe(df)} → rebuild. Columns \code{id}, \code{tally_keys},
 \code{tally_values} (VECSXP of integer/double vectors). BTreeMap keys come back sorted.
 }

@@ -3090,9 +3090,7 @@ pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::Token
 #[proc_macro_derive(PreferList)]
 pub fn derive_prefer_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    list_derive::derive_prefer_list(input)
-        .unwrap_or_else(|e| e.into_compile_error())
-        .into()
+    list_derive::derive_prefer_list(input).into()
 }
 
 /// Derive `PreferExternalPtr`: return a type with a hand-written `TypedExternal`
@@ -3114,9 +3112,7 @@ pub fn derive_prefer_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 #[proc_macro_derive(PreferExternalPtr)]
 pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    list_derive::derive_prefer_externalptr(input)
-        .unwrap_or_else(|e| e.into_compile_error())
-        .into()
+    list_derive::derive_prefer_externalptr(input).into()
 }
 
 /// Derive `PreferRNativeType`: when a newtype wraps an `RNativeType` and also
@@ -3134,9 +3130,7 @@ pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::
 #[proc_macro_derive(PreferRNativeType)]
 pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    list_derive::derive_prefer_rnative(input)
-        .unwrap_or_else(|e| e.into_compile_error())
-        .into()
+    list_derive::derive_prefer_rnative(input).into()
 }
 
 /// Derive `PreferVctrs`: emits an `IntoR` impl converting the type to its R vctrs object via
@@ -3157,9 +3151,7 @@ pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::Toke
 #[proc_macro_derive(PreferVctrs)]
 pub fn derive_prefer_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    list_derive::derive_prefer_vctrs(input)
-        .unwrap_or_else(|e| e.into_compile_error())
-        .into()
+    list_derive::derive_prefer_vctrs(input).into()
 }
 
 /// Derive `DataFrameRow`: generates a companion `*DataFrame` type with collection fields,
@@ -3228,8 +3220,8 @@ pub fn derive_prefer_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///   `BuiltDataFrame`) or `rows.wrap_data_frame()` (deferred `IntoR` wrapper);
 ///   parallel variant `rows.into_dataframe_par()?`. From the `IntoDataFrame` /
 ///   `AsDataFrameExt` traits (both re-exported from `miniextendr_api::prelude`).
-/// - **R `data.frame` → rows**: `Vec::<Row>::from_dataframe(&df)?` (parallel:
-///   `Vec::<Row>::from_dataframe_par(&df)?`), from the `FromDataFrame` trait — or
+/// - **R `data.frame` → rows**: `Vec::<Row>::from_dataframe(df)?` (parallel:
+///   `Vec::<Row>::from_dataframe_par(df)?`), from the `FromDataFrame` trait — or
 ///   the one-call `Row::try_from_dataframe(sexp)` reader on the row type.
 /// - **Rows ↔ the pure-Rust columnar companion** (`<Row>DataFrame`, `Vec`-columns,
 ///   no R involved): the `ColumnarFrame` trait (in the prelude) —

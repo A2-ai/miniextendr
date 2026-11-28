@@ -160,6 +160,10 @@ pub struct RngGuard {
     _nosend: NoSendSync,
 }
 
+#[expect(
+    clippy::unused_self,
+    reason = "a guard exists only while R's RNG state is loaded; its draws take &self as that proof"
+)]
 impl RngGuard {
     /// Create a new RNG guard, loading the current RNG state.
     ///

@@ -49,7 +49,7 @@ finish; its zero-column frame is identical to `data.frame()`.
 | Trait | Method | Direction | Scalar analogue |
 |---|---|---|---|
 | `IntoDataFrame` | `rows.into_dataframe()? -> BuiltDataFrame` | Rust → R | `IntoR` |
-| `FromDataFrame` | `Vec::<Row>::from_dataframe(&df)? -> Vec<Row>` | R → Rust | `TryFromSexp` |
+| `FromDataFrame` | `Vec::<Row>::from_dataframe(df)? -> Vec<Row>` | R → Rust | `TryFromSexp` |
 
 The verbs are implemented **on the data** (`Vec<Row>` / `&DataFrame`, and borrowed rows `&[Row]` / `&Vec<Row>` for `IntoDataFrame`), not on a companion type. There is one error type (`DataFrameError`) and one NA contract: a missing cell maps to `None` in an `Option<T>` field, and `None` maps back to `NA`.
 
@@ -90,7 +90,7 @@ The reverse direction reads a `DataFrame` argument back into rows:
 ```rust
 #[miniextendr]
 fn round_trip(df: DataFrame) -> BuiltDataFrame {
-    let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df).unwrap();
+    let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(df).unwrap();
     rows.into_dataframe().unwrap()
 }
 ```
@@ -800,10 +800,10 @@ struct Row {
 
 ## Reading data frames back (`FromDataFrame`)
 
-`Vec::<Row>::from_dataframe(&df)?` transposes columns back into rows:
+`Vec::<Row>::from_dataframe(df)?` transposes columns back into rows:
 
 ```rust
-let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df)?;
+let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(df)?;
 for m in &rows {
     println!("time {} value {}", m.time, m.value);
 }
@@ -829,7 +829,7 @@ discoverable and gives NA-able keys a defined home (key on `Option<T>` —
 `None` sorts first — or a custom enum):
 
 ```rust
-let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(&df)?;
+let rows: Vec<Measurement> = Vec::<Measurement>::from_dataframe(df)?;
 let by_sensor: BTreeMap<String, Vec<Measurement>> =
     group_rows(rows, |m| m.sensor.clone());
 ```
@@ -1022,7 +1022,7 @@ Explicit `_par` variants produce the **same** `BuiltDataFrame` / `Vec<Row>` as t
 
 ```rust
 let df   = rows.into_dataframe_par()?;             // parallel (column, row-range) fill
-let rows = Vec::<Measurement>::from_dataframe_par(&df)?; // off-main-thread row assembly
+let rows = Vec::<Measurement>::from_dataframe_par(df)?; // off-main-thread row assembly
 ```
 
 Dropping `_par` (building without the `rayon` feature) degrades cleanly to the sequential call — the verb name is stable across feature sets.
@@ -1086,7 +1086,7 @@ fn get_logs() -> BuiltDataFrame {
 }
 
 // Reading back:
-//   let logs = SerdeRows::<LogEntry>::from_dataframe(&df)?.into_inner();
+//   let logs = SerdeRows::<LogEntry>::from_dataframe(df)?.into_inner();
 ```
 
 Column types are inferred from serde field types:
@@ -1174,7 +1174,7 @@ The redundant public types below were **removed** (#781) — there is no backwar
 | `ToDataFrame<Companion>` wrapper + `value.to_data_frame()` | `rows.into_dataframe()?` |
 | `convert::SerializeDataFrame<T>` / `AsSerializeRow<T>` / `from_serialize()` | `serde::SerdeRows(rows).into_dataframe()?` |
 | `impl IntoDataFrame for X { fn into_data_frame(self) -> List }` | derive `DataFrameRow`, or build a `BuiltDataFrame` via `DataFrame::builder(n)` |
-| `Row::try_from_dataframe(sexp)` (bare `String` error) | `Vec::<Row>::from_dataframe(&df)?` (`DataFrameError`) |
+| `Row::try_from_dataframe(sexp)` (bare `String` error) | `Vec::<Row>::from_dataframe(df)?` (`DataFrameError`) |
 | `RDataFrameBuilder::new(n)` | `DataFrame::builder(n)` |
 | four conversion error types | one `DataFrameError` |
 
