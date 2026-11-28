@@ -262,7 +262,7 @@ pub use miniextendr_macros::{PreferVctrs, Vctrs};
 // The same applies to the `IntoR` and `TryFromSexp` derive macros, which share names with
 // the `IntoR` / `TryFromSexp` traits — `#[derive(IntoR)]` (macro namespace) and the trait
 // (type namespace) coexist, exactly like serde's `Serialize`. `RCondition` follows
-// suit: the enum and the derive are re-exported together from `condition`.
+// suit: the struct and the derive are re-exported together from `condition`.
 #[doc(inline)]
 pub use miniextendr_macros::{
     Altrep, AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal,
@@ -761,7 +761,7 @@ pub use r_coerce::{
 };
 
 pub mod condition;
-pub use condition::{ArgError, AsRError, RCondition};
+pub use condition::{ArgError, AsRError, ConditionKind, RCondition};
 pub mod deferred_condition;
 pub use deferred_condition::{defer_condition, defer_message, defer_warning};
 pub mod convert;

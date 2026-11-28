@@ -7,7 +7,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::condition::{RCondition, RConditionData, catch_condition};
+use miniextendr_api::condition::{ConditionKind, RCondition, RConditionData, catch_condition};
 use miniextendr_api::expression::RCall;
 use miniextendr_api::externalptr::{
     ExternalPtr, Sidecar, TypeMismatchError, TypedExternal, rewrite_stored_type_for_tests,
@@ -263,17 +263,22 @@ fn a_save_that_does_not_decode_is_refused_with_its_cause() {
             catch_condition(|| ExternalPtr::<Positive>::try_from_sexp(back.get()).is_ok())
                 .expect_err("the conversion raises the refusal");
         assert_eq!(
-            refusal.class(),
+            refusal.class,
             ["miniextendr_restored_no_value", "miniextendr_restored"]
         );
         assert!(
             refusal
-                .message()
+                .message
                 .contains("could not be read: -3 is negative"),
             "{}",
-            refusal.message()
+            refusal.message
         );
-        let RCondition::Error { data, .. } = &refusal else {
+        let RCondition {
+            kind: ConditionKind::Error,
+            data,
+            ..
+        } = &refusal
+        else {
             panic!("{refusal:?}")
         };
         let data = data.as_ref().expect("the parent rides in the data");

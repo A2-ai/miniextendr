@@ -111,7 +111,8 @@ fn raise_transport_condition(what: &str) -> i32 {
             call = miniextendr_api::RCallValue::new("site").arg(1),
             "transport warning"
         ),
-        "reserved" => std::panic::panic_any(miniextendr_api::RCondition::Error {
+        "reserved" => std::panic::panic_any(miniextendr_api::RCondition {
+            kind: miniextendr_api::ConditionKind::Error,
             message: "base message".to_string(),
             class: vec!["pkg_transport".to_string()],
             data: Some(vec![
@@ -119,7 +120,7 @@ fn raise_transport_condition(what: &str) -> i32 {
                 ("message".to_string(), "user message".into()),
                 ("step".to_string(), 2i32.into()),
             ]),
-            call: miniextendr_api::condition::ConditionCall::Inherit,
+            ..Default::default()
         }),
         _ => 0,
     }

@@ -269,13 +269,14 @@ impl std::io::Seek for BrokenIo {
 }
 
 fn expect_io_error<T>(operation: &str, f: impl FnOnce() -> T) {
-    use miniextendr_api::condition::{RCondition, catch_condition};
+    use miniextendr_api::condition::{ConditionKind, RCondition, catch_condition};
     use miniextendr_api::rvalue::RValue;
     let condition = match catch_condition(f) {
         Err(condition) => condition,
         Ok(_) => panic!("I/O failure was swallowed"),
     };
-    let RCondition::Error {
+    let RCondition {
+        kind: ConditionKind::Error,
         message,
         class,
         data,

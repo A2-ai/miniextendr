@@ -48,7 +48,7 @@ use super::{
 };
 use crate::altrep::RBase;
 use crate::altrep_traits::{AltVec, Altrep};
-use crate::condition::{ConditionCall, RCondition};
+use crate::condition::{ConditionCall, ConditionKind, RCondition};
 use crate::gc_protect::ProtectScope;
 use crate::sys::altrep::R_altrep_class_t;
 use crate::sys::{
@@ -418,11 +418,12 @@ unsafe fn unserialize<T: TypedExternal>(state: SEXP) -> SEXP {
 /// as a [`DECODE_ERROR_CLASS`] condition with its message. An R error keeps
 /// unwinding: its jump belongs to R (#2244).
 fn decode<T>(decode: fn(SEXP) -> Result<T, String>, state: SEXP) -> Result<T, RCondition> {
-    let decoding_failed = |message: String| RCondition::Error {
+    let decoding_failed = |message: String| RCondition {
+        kind: ConditionKind::Error,
         message,
         class: vec![DECODE_ERROR_CLASS.to_owned()],
-        data: None,
         call: ConditionCall::None,
+        ..Default::default()
     };
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| decode(state))) {
         Ok(Ok(value)) => Ok(value),

@@ -34,7 +34,7 @@ fn alias_error<const N: usize>(
     unsafe {
         let scope = ProtectScope::new();
         let result = scope.protect(result);
-        RCondition::from_tagged_sexp(result.get()).map(|condition| condition.message().to_owned())
+        RCondition::from_tagged_sexp(result.get()).map(|condition| condition.message)
     }
 }
 

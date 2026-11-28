@@ -35,7 +35,7 @@ fn kind_defaults_to_error_and_a_variant_overrides_the_type() {
     let code = derive(syn::parse_quote! {
         struct Plain;
     });
-    assert!(code.contains("Self :: Error { message , class , data , call }"));
+    assert!(code.contains("kind : :: miniextendr_api :: condition :: ConditionKind :: Error ,"));
     let code = derive(syn::parse_quote! {
         #[condition(kind = warning)]
         enum Mixed {
@@ -46,9 +46,21 @@ fn kind_defaults_to_error_and_a_variant_overrides_the_type() {
             Drift,
         }
     });
-    assert!(code.contains("Mixed :: Note => Self :: Message"));
-    assert!(code.contains("Mixed :: Fatal => Self :: Error"));
-    assert!(code.contains("Mixed :: Drift => Self :: Warning"));
+    assert!(
+        code.contains(
+            "Mixed :: Note => :: miniextendr_api :: condition :: ConditionKind :: Message"
+        )
+    );
+    assert!(
+        code.contains(
+            "Mixed :: Fatal => :: miniextendr_api :: condition :: ConditionKind :: Error"
+        )
+    );
+    assert!(
+        code.contains(
+            "Mixed :: Drift => :: miniextendr_api :: condition :: ConditionKind :: Warning"
+        )
+    );
 }
 
 #[test]

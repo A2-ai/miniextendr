@@ -4,7 +4,7 @@
 
 mod r_test_utils;
 
-use miniextendr_api::condition::RCondition;
+use miniextendr_api::condition::{ConditionKind, RCondition};
 use miniextendr_api::deferred_condition::capture;
 use miniextendr_api::encoding::NATIVE_TRANSLATION_CLASS;
 use miniextendr_api::from_r::TryFromSexp;
@@ -31,7 +31,11 @@ fn read_str(x: SEXP) -> (&'static str, bool) {
 }
 
 fn is_translation_warning(cond: &RCondition) -> bool {
-    matches!(cond, RCondition::Warning { class, .. } if class.iter().any(|c| c == NATIVE_TRANSLATION_CLASS))
+    matches!(cond, RCondition {
+kind: ConditionKind::Warning,
+class,
+..
+} if class.iter().any(|c| c == NATIVE_TRANSLATION_CLASS))
 }
 
 #[test]

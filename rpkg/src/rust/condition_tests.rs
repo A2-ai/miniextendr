@@ -1,6 +1,8 @@
 //! Test fixtures for AsRError structured error adapter.
 
-use miniextendr_api::condition::{AsRError, ConditionCall, RCondition, catch_condition};
+use miniextendr_api::condition::{
+    AsRError, ConditionCall, ConditionKind, RCondition, catch_condition,
+};
 use miniextendr_api::{RValue, miniextendr};
 
 // region: Simple errors
@@ -67,11 +69,11 @@ fn parse_setting(line: &str) -> i32 {
 pub fn test_condition_with_parent(line: &str) -> i32 {
     match catch_condition(|| parse_setting(line)) {
         Ok(value) => value,
-        Err(cause) => RCondition::Error {
+        Err(cause) => RCondition {
+            kind: ConditionKind::Error,
             message: "could not load the setting".into(),
             class: vec!["pkg_error_load".into()],
-            data: None,
-            call: ConditionCall::Inherit,
+            ..Default::default()
         }
         .with_parent(cause)
         .raise(),
@@ -83,33 +85,35 @@ pub fn test_condition_with_parent(line: &str) -> i32 {
 /// replaced by the second `with_parent`.
 #[miniextendr(noexport)]
 pub fn test_condition_with_parent_chain() -> i32 {
-    let root = RCondition::Message {
+    let root = RCondition {
+        kind: ConditionKind::Message,
         message: "root".into(),
         class: vec!["pkg_root".into()],
-        data: None,
-        call: ConditionCall::Inherit,
+        ..Default::default()
     };
-    let middle = RCondition::Warning {
+    let middle = RCondition {
+        kind: ConditionKind::Warning,
         message: "middle".into(),
         class: vec!["pkg_middle".into()],
         data: Some(vec![("step".into(), RValue::Integer(vec![Some(2)]))]),
         call: ConditionCall::None,
     }
     .with_parent(root);
-    let replaced = RCondition::Error {
+    let replaced = RCondition {
+        kind: ConditionKind::Error,
         message: "replaced".into(),
         class: vec!["pkg_replaced".into()],
-        data: None,
-        call: ConditionCall::Inherit,
+        ..Default::default()
     };
-    RCondition::Error {
+    RCondition {
+        kind: ConditionKind::Error,
         message: "top".into(),
         class: vec!["pkg_top".into()],
         data: Some(vec![(
             "parent".into(),
             RValue::Character(vec![Some("a field".into())]),
         )]),
-        call: ConditionCall::Inherit,
+        ..Default::default()
     }
     .with_parent(replaced)
     .with_parent(middle)
